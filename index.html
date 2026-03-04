@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skill Swap | Exchange & Learn</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i data-lucide="sparkles" class="primary-icon"></i>
+                <span>SkillSwap</span>
+            </div>
+            <div class="nav-actions">
+                <button class="btn-ghost">Browse</button>
+                <button class="btn-ghost">Matches</button>
+                <a href="login.html" class="btn-primary" style="text-decoration: none;">Sign In</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-inner">
+            <span class="badge-hero">Community Powered</span>
+            <h1>Exchange Skills, <span class="text-gradient">No Money Needed.</span></h1>
+            <p>Connect with experts in your community. Teach what you love and master a new craft through direct exchange.</p>
+            
+            <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search skills like 'Piano' or 'React'...">
+                <button>Search</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="grid-header">
+            <h2>Explore Skills</h2>
+            <button class="btn-outline">+ Post a Skill</button>
+        </div>
+        <div id="skills-grid" class="skills-grid">
+            </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

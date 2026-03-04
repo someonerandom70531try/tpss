@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In | Skill Swap</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="auth-body">
+    
+    <a href="index.html" class="back-link">
+        <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i>
+        Back to Home
+    </a>
+
+    <div class="auth-wrapper">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo" style="justify-content: center; margin-bottom: 16px;">
+                    <i data-lucide="sparkles" class="primary-icon"></i>
+                    <span>SkillSwap</span>
+                </div>
+                <h2>Welcome back</h2>
+                <p>Enter your email below to log into your account</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="m@example.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label for="password">Password</label>
+                        <a href="#" class="forgot-link">Forgot password?</a>
+                    </div>
+                    <input type="password" id="password" required>
+                </div>
+
+                <button type="submit" class="btn-primary w-full">Sign In</button>
+            </form>
+
+            <div class="divider">
+                <span>Or continue with</span>
+            </div>
+
+            <div class="social-grid">
+                <button class="btn-outline social-btn">
+                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width="20">
+                    Google
+                </button>
+                <button class="btn-outline social-btn">
+                    <i data-lucide="github" style="width: 20px; height: 20px;"></i>
+                    GitHub
+                </button>
+            </div>
+
+            <p class="auth-footer">
+                Don't have an account? <a href="#" style="color: var(--primary); font-weight: 500;">Sign up</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
