@@ -215,3 +215,156 @@ h1 { font-size: 3.5rem; letter-spacing: -0.02em; margin: 20px 0; font-weight: 80
     background-color: #fef2f2;
     color: #dc2626;
 }
+
+/* ==========================================
+   PROFILE PAGE STYLES (account.html)
+   ========================================== */
+
+.profile-container {
+    max-width: 800px;
+    margin: 30px auto;
+    padding: 0 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.profile-card {
+    background: white;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    padding: 24px;
+    overflow: hidden; /* Keeps the banner image inside rounded corners */
+}
+
+/* Card 1 specific padding removal so banner hits the edges */
+.profile-card:first-child {
+    padding: 0; 
+}
+
+/* --- The Banner --- */
+.profile-banner {
+    height: 200px;
+    width: 100%;
+    position: relative;
+    cursor: pointer;
+}
+
+.profile-banner img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* --- The Profile Picture --- */
+.profile-info-section {
+    padding: 0 24px 24px 24px;
+    position: relative;
+}
+
+.profile-avatar-wrapper {
+    width: 152px;
+    height: 152px;
+    margin-top: -76px; /* Pulls it exactly halfway up into the banner */
+    margin-bottom: 15px;
+    border: 4px solid white;
+    border-radius: 50%;
+    position: relative;
+    background: white;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.profile-avatar-large {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: #ea580c; /* Your orange theme */
+    color: white;
+    font-size: 4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- Hover Edit Overlays (The magic!) --- */
+.edit-hover-group {
+    position: relative;
+}
+
+.edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4); /* Dark dimming effect */
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.edit-overlay.circle {
+    border-radius: 50%;
+}
+
+/* Show the overlay when the mouse hovers over the group */
+.edit-hover-group:hover .edit-overlay {
+    opacity: 1;
+}
+
+/* --- Text & Layout Helpers --- */
+.flex-row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    transition: background 0.2s;
+}
+
+.icon-btn:hover {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+.profile-text h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #111827;
+}
+
+.profile-headline {
+    margin: 5px 0;
+    font-size: 1.05rem;
+    color: #1f2937;
+}
+
+.profile-location {
+    margin: 5px 0 0 0;
+    font-size: 0.9rem;
+    color: #6b7280;
+}
+
+/* --- Skill Tags --- */
+.skill-tag {
+    background: #f3f4f6;
+    color: #374151;
+    padding: 6px 16px;
+    border-radius: 20px; /* Pill shape */
+    font-weight: 500;
+    font-size: 0.9rem;
+    border: 1px solid #e5e7eb;
+}
