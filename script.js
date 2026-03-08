@@ -244,6 +244,6 @@ function handleLogout() {
 // When the HTML is fully loaded, trigger the initial functions
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
-    
+    updateUIForUser();
     // I REMOVED the extra toggleLink code here so it doesn't double-fire!
 });
