@@ -208,6 +208,10 @@ function updateUIForUser() {
     const avatarBtn = document.getElementById('user-avatar-btn');
     const avatarInitial = document.getElementById('avatar-initial');
     const dropdownUsername = document.getElementById('dropdown-username');
+    
+    // NEW: Grab the profile page elements
+    const profilePageName = document.getElementById('profile-page-name');
+    const profilePageInitial = document.getElementById('profile-page-initial');
 
     if (!loggedOutUI || !loggedInUI) return;
 
@@ -226,6 +230,11 @@ function updateUIForUser() {
         
         // Put their full name in the dropdown header
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
+        
+        // NEW: Populate the account.html page with the user's details
+        if (profilePageName) profilePageName.innerText = currentUser;
+        if (profilePageInitial) profilePageInitial.innerText = currentUser.charAt(0).toUpperCase();
+        
     } else {
         // User is NOT logged in
         loggedOutUI.style.display = 'block';
