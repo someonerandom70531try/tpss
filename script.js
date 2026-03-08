@@ -1,157 +1,213 @@
-// Initialize Icons
+// ==========================================
+// 1. INITIALIZATION & SETUP
+// ==========================================
+
+// Initialize Lucide Icons
 lucide.createIcons();
 
-// 1. Connection Setup (Replace with your actual URL and Key again)
+// Replace these with your actual Supabase URL and anon public key
 const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 
-// FIX: Renamed the variable to 'supabaseClient' and use 'window.supabase'
+// Create the Supabase connection
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// --- Fetch Data for Home Page ---
+
+// ==========================================
+// 2. HOME PAGE LOGIC (index.html)
+// ==========================================
+
 async function loadSkills() {
     const grid = document.getElementById('skills-grid');
-    if (!grid) return; // Only run on index.html
+    // If we aren't on the home page (no grid found), stop running this function
+    if (!grid) return; 
 
-    // FIX: Using supabaseClient
-    const { data: skills, error } = await supabaseClient.from('skills').select('*');
+    // Fetch skills from the database
+    const { data: skills, error } = await supabaseClient
+        .from('skills')
+        .select('*')
+        .order('created_at', { ascending: false }); // Show newest first
     
     if (error) {
         console.error("Error fetching skills:", error);
+        grid.innerHTML = `<p>Error loading skills. Please try again later.</p>`;
         return;
     }
 
+    if (!skills || skills.length === 0) {
+        grid.innerHTML = `<p>No skills posted yet. Be the first!</p>`;
+        return;
+    }
+
+    // Inject the skills into the HTML
     grid.innerHTML = skills.map(skill => `
-        <div class="skill-card">
+        <div class="skill-card" style="border: 1px solid #eee; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <span class="badge" style="font-size:0.75rem; color:#8b5cf6; background:#f5f3ff; padding:4px 8px; border-radius:4px;">${skill.category}</span>
             <h3 style="margin-top: 10px">${skill.title}</h3>
-            <p style="color: #6b7280; margin: 10px 0">${skill.bio || 'No description provided.'}</p>
-            <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid #eee; padding-top: 15px">
-                <div style="width: 30px; height: 30px; border-radius: 50%; background: #ddd; display:flex; justify-content:center; align-items:center;">
-                    <i data-lucide="user" style="width:16px;"></i>
-                </div>
-                <span style="font-weight: 600; font-size: 0.9rem">${skill.author_name || 'Anonymous'}</span>
-            </div>
+            <p style="color: #6b7280; margin: 10px 0">${skill.description || 'No description provided.'}</p>
         </div>
     `).join('');
     
+    // Re-initialize icons for the newly added HTML
     lucide.createIcons();
 }
 
-// --- Auth Logic for Login Page ---
-async function handleLogin(event) {
+
+// ==========================================
+// 3. AUTHENTICATION UI TOGGLE (auth.html)
+// ==========================================
+
+let isLoginMode = true;
+
+// Swaps the form between Sign In and Sign Up modes
+function toggleAuthMode(event) {
     if (event) event.preventDefault();
+    isLoginMode = !isLoginMode;
     
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const signinForm = document.getElementById('signin-form');
+    const signupForm = document.getElementById('signup-form');
+    const authTitle = document.getElementById('auth-title');
+    const authSubtitle = document.getElementById('auth-subtitle');
+    const toggleText = document.getElementById('toggle-text');
+    const toggleLink = document.getElementById('toggle-link');
 
-    // FIX: Using supabaseClient
-    const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: email,
-        password: password,
-    });
+    // Make sure we are actually on the auth page before trying to change things
+    if (!signinForm || !signupForm) return;
 
-    if (error) {
-        alert("Login failed: " + error.message);
+    if (isLoginMode) {
+        // Show Login UI
+        signinForm.style.display = 'block';
+        signupForm.style.display = 'none';
+        authTitle.innerText = 'Welcome Back';
+        authSubtitle.innerText = 'Enter your details to sign in';
+        toggleText.innerText = "Don't have an account?";
+        toggleLink.innerText = 'Sign up';
     } else {
-        alert("Success! Redirecting...");
-        window.location.href = "index.html";
+        // Show Sign Up UI
+        signinForm.style.display = 'none';
+        signupForm.style.display = 'block';
+        authTitle.innerText = 'Create an Account';
+        authSubtitle.innerText = 'Join the community to start swapping skills';
+        toggleText.innerText = "Already have an account?";
+        toggleLink.innerText = 'Sign in';
     }
 }
 
-// --- Auth Logic for Signup Page ---
-async function handleSignup(event) {
+
+// ==========================================
+// 4. MANUAL SIGN UP LOGIC (auth.html)
+// ==========================================
+
+async function handleSignUp(event) {
     if (event) event.preventDefault();
     
-    const email = document.getElementById('email').value;
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('signup-email').value.trim();
+    const username = document.getElementById('signup-username').value.trim();
+    const password = document.getElementById('signup-password').value;
 
+    // Password Rules Validation
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(password)) {
-        alert("Password does not meet the requirements. Please ensure it has 8+ characters, an uppercase letter, a lowercase letter, and a number.");
+        alert("Password must be at least 8 characters long, and include an uppercase letter, a lowercase letter, and a number.");
         return;
     }
 
-    // FIX: Using supabaseClient
-    const { data: existingUser, error: checkError } = await supabaseClient
-        .from('profiles')
-        .select('username')
-        .eq('username', username)
+    // Check if username or email is already taken in 'app_users'
+    const { data: existingUsers, error: checkError } = await supabaseClient
+        .from('app_users')
+        .select('*')
+        .or(`username.eq.${username},email.eq.${email}`);
+
+    if (checkError) {
+        console.error("Database error during validation:", checkError);
+        return;
+    }
+
+    if (existingUsers && existingUsers.length > 0) {
+        alert("That username or email is already taken! Please choose another.");
+        return;
+    }
+
+    // Insert new user into 'app_users' table
+    const { data: newUser, error: insertError } = await supabaseClient
+        .from('app_users')
+        .insert([{ email: email, username: username, password: password }])
+        .select() // Ask Supabase to return the data it just inserted
         .single();
 
-    if (existingUser) {
-        alert("That username is already taken! Please choose another one.");
+    if (insertError) {
+        alert("Error creating account: " + insertError.message);
         return;
     }
 
-    // FIX: Using supabaseClient
-    const { data: authData, error: authError } = await supabaseClient.auth.signUp({
-        email: email,
-        password: password
-    });
-
-    if (authError) {
-        alert("Signup error: " + authError.message);
-        return;
-    }
-
-    if (authData.user) {
-        // FIX: Using supabaseClient
+    // Link a blank profile to the new user in the 'profiles' table
+    if (newUser) {
         const { error: profileError } = await supabaseClient
             .from('profiles')
-            .insert([
-                { id: authData.user.id, email: email, username: username }
-            ]);
-
+            .insert([{ user_id: newUser.id }]);
+            
         if (profileError) {
-            console.error("Error saving profile details:", profileError);
-            alert("Account created, but there was an error saving your username.");
-            return;
+            console.error("Warning: Profile link failed, but user was created.", profileError);
         }
-
-        alert("Account created successfully! You can now log in.");
-        window.location.href = "login.html";
     }
+
+    alert("Account created successfully! Please sign in with your new credentials.");
+    
+    // Clear the form and flip back to the Sign In view
+    document.getElementById('signup-form').reset();
+    toggleAuthMode(); 
 }
 
-// Run on page load
-document.addEventListener('DOMContentLoaded', loadSkills);
 
-// --- Manual Auth Logic for Login Page ---
-async function handleLogin(event) {
+// ==========================================
+// 5. MANUAL SIGN IN LOGIC (auth.html)
+// ==========================================
+
+async function handleSignIn(event) {
     if (event) event.preventDefault();
     
-    // Get the values the user typed in
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-password').value;
 
-    // Ask our custom table for a row matching BOTH the email and password
+    // Ask the 'app_users' table if these exact credentials exist
     const { data, error } = await supabaseClient
-        .from('custom_users')
+        .from('app_users')
         .select('*')
         .eq('email', email)
         .eq('password', password);
 
     if (error) {
-        console.error("Database error:", error);
-        alert("An error occurred connecting to the database.");
+        console.error("Database error during login:", error);
+        alert("An error occurred. Please try again.");
         return;
     }
 
-    // Check if the database handed back exactly 1 matching row
+    // If a match is found, log them in
     if (data && data.length > 0) {
-        const loggedInUser = data[0]; // Grab the user's details
+        const user = data[0];
         
-        alert(`Welcome back, ${loggedInUser.username}!`);
+        // Save user data locally so the browser remembers they are logged in
+        localStorage.setItem('currentUserId', user.id);
+        localStorage.setItem('currentUser', user.username);
         
-        // Save the username to the browser so the Home page knows who is logged in
-        localStorage.setItem('currentUser', loggedInUser.username);
-        
-        // Send them to the home page
+        alert(`Sign in successful! Welcome back, ${user.username}!`);
         window.location.href = "index.html";
     } else {
-        // If the array is empty, no match was found
-        alert("Invalid email or password!");
+        alert("Invalid email or password. Please try again.");
     }
 }
+
+// ==========================================
+// 6. RUN ON PAGE LOAD
+// ==========================================
+
+// When the HTML is fully loaded, trigger the initial functions
+document.addEventListener('DOMContentLoaded', () => {
+    loadSkills();
+    
+    // Set up the toggle listener only if the toggle link exists (on auth.html)
+    const toggleLink = document.getElementById('toggle-link');
+    if (toggleLink) {
+        toggleLink.parentElement.addEventListener('click', toggleAuthMode);
+    }
+});
