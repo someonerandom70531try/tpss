@@ -79,4 +79,40 @@
                     <div class="flex-row-between" style="justify-content: flex-start; gap: 10px;">
                         <p class="profile-location" id="profile-location" style="min-height: 20px; margin: 0; color: #6b7280; font-size: 0.9rem;"></p>
                         <button class="icon-btn" style="padding: 4px;" onclick="editProfileField('location', 'Enter your city and state:')">
-                            <i data-
+                            <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 10px;">
+                <h2 style="margin: 0;">About</h2>
+                <button class="icon-btn" onclick="editProfileField('bio', 'Write a bit about yourself:')">
+                    <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            <p id="profile-bio" style="color: #4b5563; line-height: 1.6; white-space: pre-wrap; min-height: 24px; margin: 0;"></p>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Skills</h2>
+                <button class="icon-btn" onclick="editProfileField('profile_skills', 'Enter your skills separated by commas (e.g., Linux, React, Python):')">
+                    <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            <div id="profile-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;">
+                </div>
+        </div>
+
+    </main>
+
+    <script src="script.js"></script>
+    <script>
+        // Ensure Lucide icons render specifically on this page
+        lucide.createIcons();
+    </script>
+</body>
+</html>
