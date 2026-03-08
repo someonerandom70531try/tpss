@@ -117,3 +117,41 @@ async function handleSignup(event) {
 
 // Run on page load
 document.addEventListener('DOMContentLoaded', loadSkills);
+
+// --- Manual Auth Logic for Login Page ---
+async function handleLogin(event) {
+    if (event) event.preventDefault();
+    
+    // Get the values the user typed in
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    // Ask our custom table for a row matching BOTH the email and password
+    const { data, error } = await supabaseClient
+        .from('custom_users')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password);
+
+    if (error) {
+        console.error("Database error:", error);
+        alert("An error occurred connecting to the database.");
+        return;
+    }
+
+    // Check if the database handed back exactly 1 matching row
+    if (data && data.length > 0) {
+        const loggedInUser = data[0]; // Grab the user's details
+        
+        alert(`Welcome back, ${loggedInUser.username}!`);
+        
+        // Save the username to the browser so the Home page knows who is logged in
+        localStorage.setItem('currentUser', loggedInUser.username);
+        
+        // Send them to the home page
+        window.location.href = "index.html";
+    } else {
+        // If the array is empty, no match was found
+        alert("Invalid email or password!");
+    }
+}
