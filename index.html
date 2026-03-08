@@ -16,25 +16,37 @@
                 <i data-lucide="sparkles" class="primary-icon"></i>
                 <span>SkillSwap</span>
             </div>
-            <div class="nav-actions">
-                <button class="btn-ghost">Browse</button>
-                <button class="btn-ghost">Matches</button>
-                <div id="auth-container">
-    
-    <div id="logged-out-ui">
-        <a href="auth.html" class="btn-primary">Sign In</a>
-    </div>
+           <div class="nav-actions">
+                <div id="auth-container" style="position: relative;">
+                    
+                    <div id="logged-out-ui">
+                        <a href="auth.html" class="btn-primary">Sign In</a>
+                    </div>
 
-    <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
-        <span style="font-weight: 500; color: #374151;">
-            Hi, <span id="user-greeting-name" style="color: #8b5cf6;">User</span>!
-        </span>
-        <button onclick="handleLogout()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">
-            Logout
-        </button>
-    </div>
+                    <div id="logged-in-ui" style="display: none; align-items: center;">
+                        
+                        <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)">
+                            <span id="avatar-initial">U</span>
+                        </button>
 
-    </div>
+                        <div id="user-dropdown" class="dropdown-menu">
+                            <div class="dropdown-header">
+                                <p id="dropdown-username" style="font-weight: 600; margin: 0; color: #1f2937;">Username</p>
+                                <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
+                            </div>
+                            <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
+                            
+                            <a href="account.html" class="dropdown-item">
+                                <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
+                            </a>
+                            
+                            <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
+                                <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
             </div>
         </div>
     </nav>
