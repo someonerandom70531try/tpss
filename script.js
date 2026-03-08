@@ -197,6 +197,46 @@ async function handleSignIn(event) {
     }
 }
 
+
+// ==========================================
+// DYNAMIC UI & LOGOUT LOGIC
+// ==========================================
+
+function updateUIForUser() {
+    // 1. Grab the UI elements
+    const loggedOutUI = document.getElementById('logged-out-ui');
+    const loggedInUI = document.getElementById('logged-in-ui');
+    const greetingName = document.getElementById('user-greeting-name');
+
+    // Make sure we are on a page that actually has these elements (like index.html)
+    if (!loggedOutUI || !loggedInUI) return;
+
+    // 2. Check browser memory for a logged-in user
+    const currentUser = localStorage.getItem('currentUser');
+
+    if (currentUser) {
+        // User IS logged in: Hide Sign In, Show Greeting & Logout
+        loggedOutUI.style.display = 'none';
+        loggedInUI.style.display = 'flex';
+        greetingName.innerText = currentUser; // Inject their actual username
+    } else {
+        // User is NOT logged in: Show Sign In, Hide Greeting
+        loggedOutUI.style.display = 'block';
+        loggedInUI.style.display = 'none';
+    }
+}
+
+function handleLogout() {
+    // Clear the user from the browser's memory
+    localStorage.removeItem('currentUserId');
+    localStorage.removeItem('currentUser');
+    
+    // Refresh the page so the UI resets
+    window.location.reload();
+}
+
+
+
 // ==========================================
 // 6. RUN ON PAGE LOAD
 // ==========================================
