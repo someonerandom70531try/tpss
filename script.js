@@ -1,28 +1,36 @@
+// Initialize Icons
 lucide.createIcons();
 
-const mockSkills = [
-    { title: "React & TypeScript", category: "Programming", user: "Jordan Smith", avatar: "JS", level: "Expert" },
-    { title: "Photography 101", category: "Arts", user: "Maria Garcia", avatar: "MG", level: "Intermediate" },
-    { title: "Sourdough Baking", category: "Cooking", user: "Sam Wilson", avatar: "SW", level: "Beginner" }
-];
+// 1. Connection Setup (Replace with your actual URL and Key again)
+const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 
-function render() {
+// FIX: Renamed the variable to 'supabaseClient' and use 'window.supabase'
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- Fetch Data for Home Page ---
+async function loadSkills() {
     const grid = document.getElementById('skills-grid');
-    grid.innerHTML = mockSkills.map(skill => `
+    if (!grid) return; // Only run on index.html
+
+    // FIX: Using supabaseClient
+    const { data: skills, error } = await supabaseClient.from('skills').select('*');
+    
+    if (error) {
+        console.error("Error fetching skills:", error);
+        return;
+    }
+
+    grid.innerHTML = skills.map(skill => `
         <div class="skill-card">
-            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:16px;">
-                <span style="font-size:0.75rem; font-weight:600; color:var(--primary); background:#f5f3ff; padding:4px 8px; border-radius:4px;">${skill.category}</span>
-                <i data-lucide="more-horizontal" style="color:var(--gray-600); cursor:pointer"></i>
-            </div>
-            <h3 style="font-size:1.25rem; font-weight:700; margin-bottom:8px;">${skill.title}</h3>
-            <p style="color:var(--gray-600); font-size:0.9rem; margin-bottom:20px;">Master the fundamentals and advanced techniques in this comprehensive workshop.</p>
-            
-            <div style="display:flex; align-items:center; gap:12px; border-top:1px solid var(--gray-100); padding-top:16px;">
-                <div style="width:36px; height:36px; background:var(--gray-200); border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem;">${skill.avatar}</div>
-                <div>
-                    <div style="font-weight:600; font-size:0.9rem;">${skill.user}</div>
-                    <div style="font-size:0.75rem; color:var(--gray-600);">${skill.level}</div>
+            <span class="badge" style="font-size:0.75rem; color:#8b5cf6; background:#f5f3ff; padding:4px 8px; border-radius:4px;">${skill.category}</span>
+            <h3 style="margin-top: 10px">${skill.title}</h3>
+            <p style="color: #6b7280; margin: 10px 0">${skill.bio || 'No description provided.'}</p>
+            <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid #eee; padding-top: 15px">
+                <div style="width: 30px; height: 30px; border-radius: 50%; background: #ddd; display:flex; justify-content:center; align-items:center;">
+                    <i data-lucide="user" style="width:16px;"></i>
                 </div>
+                <span style="font-weight: 600; font-size: 0.9rem">${skill.author_name || 'Anonymous'}</span>
             </div>
         </div>
     `).join('');
@@ -30,22 +38,82 @@ function render() {
     lucide.createIcons();
 }
 
-document.addEventListener('DOMContentLoaded', render);
-
-// Auth Logic
-function handleLogin(event) {
-    event.preventDefault(); // Prevents the page from refreshing
+// --- Auth Logic for Login Page ---
+async function handleLogin(event) {
+    if (event) event.preventDefault();
+    
     const email = document.getElementById('email').value;
-    
-    // In a real app, you would send this to your Hono backend here
-    console.log("Logging in with:", email);
-    
-    // Simulate a successful login redirect
-    alert("Welcome back! Redirecting to dashboard...");
-    window.location.href = "index.html"; 
+    const password = document.getElementById('password').value;
+
+    // FIX: Using supabaseClient
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: email,
+        password: password,
+    });
+
+    if (error) {
+        alert("Login failed: " + error.message);
+    } else {
+        alert("Success! Redirecting...");
+        window.location.href = "index.html";
+    }
 }
 
-// Initialize Supabase
-const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// --- Auth Logic for Signup Page ---
+async function handleSignup(event) {
+    if (event) event.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        alert("Password does not meet the requirements. Please ensure it has 8+ characters, an uppercase letter, a lowercase letter, and a number.");
+        return;
+    }
+
+    // FIX: Using supabaseClient
+    const { data: existingUser, error: checkError } = await supabaseClient
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
+
+    if (existingUser) {
+        alert("That username is already taken! Please choose another one.");
+        return;
+    }
+
+    // FIX: Using supabaseClient
+    const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+        email: email,
+        password: password
+    });
+
+    if (authError) {
+        alert("Signup error: " + authError.message);
+        return;
+    }
+
+    if (authData.user) {
+        // FIX: Using supabaseClient
+        const { error: profileError } = await supabaseClient
+            .from('profiles')
+            .insert([
+                { id: authData.user.id, email: email, username: username }
+            ]);
+
+        if (profileError) {
+            console.error("Error saving profile details:", profileError);
+            alert("Account created, but there was an error saving your username.");
+            return;
+        }
+
+        alert("Account created successfully! You can now log in.");
+        window.location.href = "login.html";
+    }
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', loadSkills);
