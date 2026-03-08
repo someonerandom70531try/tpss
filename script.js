@@ -266,13 +266,113 @@ function handleLogout() {
     window.location.reload();
 }
 
+// ==========================================
+// PROFILE PAGE LOGIC (account.html)
+// ==========================================
+
+async function loadUserProfile() {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) {
+        window.location.href = 'auth.html';
+        return;
+    }
+
+    const { data: user } = await supabaseClient.from('app_users').select('username').eq('id', userId).single();
+    const { data: profile } = await supabaseClient.from('profiles').select('*').eq('user_id', userId).single();
+
+    if (user) {
+        document.getElementById('profile-page-name').innerText = user.username;
+        
+        // Only show the big initial if there is no custom avatar uploaded
+        const initialDiv = document.getElementById('profile-page-initial');
+        if (!profile || !profile.avatar_url) {
+            initialDiv.innerText = user.username.charAt(0).toUpperCase();
+            initialDiv.style.display = 'flex';
+        }
+    }
+
+    if (profile) {
+        // Inject text (or leave blank)
+        document.getElementById('profile-headline').innerText = profile.headline || "";
+        document.getElementById('profile-location').innerText = profile.location || "";
+        document.getElementById('profile-bio').innerText = profile.bio || "";
+        
+        // Handle Banner Image
+        const bannerImg = document.getElementById('profile-banner-img');
+        if (profile.banner_url) {
+            bannerImg.style.display = 'block';
+            bannerImg.src = profile.banner_url;
+            bannerImg.parentElement.style.backgroundColor = 'transparent';
+        } else {
+            bannerImg.style.display = 'none'; 
+            bannerImg.parentElement.style.backgroundColor = '#d1d5db'; // Blank grey box
+        }
+
+        // Handle Avatar Image
+        const imgElement = document.getElementById('profile-avatar-img');
+        if (profile.avatar_url) {
+            document.getElementById('profile-page-initial').style.display = 'none';
+            imgElement.style.display = 'block';
+            imgElement.src = profile.avatar_url;
+        } else {
+            imgElement.style.display = 'none';
+        }
+
+        // Handle Skills
+        const skillsContainer = document.getElementById('profile-skills-container');
+        if (profile.profile_skills) {
+            const skillsArray = profile.profile_skills.split(',');
+            skillsContainer.innerHTML = skillsArray.map(skill => 
+                skill.trim() !== "" ? `<span class="skill-tag">${skill.trim()}</span>` : ""
+            ).join('');
+        } else {
+            skillsContainer.innerHTML = "";
+        }
+    }
+}
+
+// Master function for editing fields
+async function editProfileField(fieldName, promptMessage) {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+
+    const newValue = prompt(promptMessage);
+    
+    // If they hit cancel, stop.
+    if (newValue === null) return; 
+
+    if (fieldName === 'username') {
+        if (newValue.trim() === "") {
+            alert("Username cannot be empty!");
+            return;
+        }
+        const { error } = await supabaseClient.from('app_users').update({ username: newValue.trim() }).eq('id', userId);
+        if (error) {
+            alert("Error updating username: " + error.message);
+        } else {
+            localStorage.setItem('currentUser', newValue.trim());
+            updateUIForUser(); 
+            loadUserProfile(); 
+        }
+    } else {
+        const { error } = await supabaseClient.from('profiles').update({ [fieldName]: newValue.trim() }).eq('user_id', userId);
+        if (error) {
+            alert("Error updating profile: " + error.message);
+        } else {
+            loadUserProfile(); 
+        }
+    }
+}
 
 // ==========================================
 // 6. RUN ON PAGE LOAD
 // ==========================================
-
-// When the HTML is fully loaded, trigger the initial functions
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
+    
+    // Check if we are on the account page, and load the user data
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+    }
 });
