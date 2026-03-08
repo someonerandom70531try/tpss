@@ -205,9 +205,5 @@ async function handleSignIn(event) {
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     
-    // Set up the toggle listener only if the toggle link exists (on auth.html)
-    const toggleLink = document.getElementById('toggle-link');
-    if (toggleLink) {
-        toggleLink.parentElement.addEventListener('click', toggleAuthMode);
-    }
+    // I REMOVED the extra toggleLink code here so it doesn't double-fire!
 });
