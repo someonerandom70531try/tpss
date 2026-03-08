@@ -19,7 +19,22 @@
             <div class="nav-actions">
                 <button class="btn-ghost">Browse</button>
                 <button class="btn-ghost">Matches</button>
-                <a href="auth.html" class="btn-primary">Sign In</a>
+                <div id="auth-container">
+    
+    <div id="logged-out-ui">
+        <a href="auth.html" class="btn-primary">Sign In</a>
+    </div>
+
+    <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
+        <span style="font-weight: 500; color: #374151;">
+            Hi, <span id="user-greeting-name" style="color: #8b5cf6;">User</span>!
+        </span>
+        <button onclick="handleLogout()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">
+            Logout
+        </button>
+    </div>
+
+    </div>
             </div>
         </div>
     </nav>
