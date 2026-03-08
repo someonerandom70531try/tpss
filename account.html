@@ -17,12 +17,14 @@
             </div>
             <div class="nav-actions">
                 <div id="auth-container" style="position: relative;">
+                    
                     <div id="logged-out-ui">
                         <a href="auth.html" class="btn-primary">Sign In</a>
                     </div>
+                    
                     <div id="logged-in-ui" style="display: none; align-items: center;">
                         <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)">
-                            <span id="avatar-initial">U</span>
+                            <span id="avatar-initial"></span>
                         </button>
                         <div id="user-dropdown" class="dropdown-menu">
                             <div class="dropdown-header">
@@ -38,6 +40,7 @@
                             </button>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -47,16 +50,17 @@
         
         <div class="profile-card">
             
-            <div class="profile-banner edit-hover-group" onclick="alert('Upload new banner feature coming soon!')">
-                <img src="https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&q=80&w=1000" alt="Banner Background">
+            <div class="profile-banner edit-hover-group" onclick="editProfileField('banner_url', 'Paste a new banner image URL:')">
+                <img id="profile-banner-img" src="" alt="Banner Background" style="display: none;">
                 <div class="edit-overlay">
                     <i data-lucide="camera" style="width: 30px; height: 30px;"></i>
                 </div>
             </div>
 
             <div class="profile-info-section">
-                <div class="profile-avatar-wrapper edit-hover-group" onclick="alert('Upload new profile picture feature coming soon!')">
-                    <div class="profile-avatar-large" id="profile-page-initial">U</div>
+                <div class="profile-avatar-wrapper edit-hover-group" onclick="editProfileField('avatar_url', 'Paste a new profile picture URL:')">
+                    <div class="profile-avatar-large" id="profile-page-initial"></div>
+                    <img id="profile-avatar-img" style="display: none; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" src="" alt="Avatar">
                     <div class="edit-overlay circle">
                         <i data-lucide="camera" style="width: 24px; height: 24px;"></i>
                     </div>
@@ -64,56 +68,15 @@
 
                 <div class="profile-text">
                     <div class="flex-row-between">
-                        <h1 id="profile-page-name">Loading...</h1>
-                        <button class="icon-btn" onclick="alert('Edit Name & Headline coming soon!')">
+                        <h1 id="profile-page-name"></h1>
+                        <button class="icon-btn" onclick="editProfileField('username', 'Enter your new username:')">
                             <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
                         </button>
                     </div>
-                    <p class="profile-headline">Cybersecurity Enthusiast | Web Developer</p>
-                    <p class="profile-location">Navi Mumbai, Maharashtra, India</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="profile-card">
-            <div class="flex-row-between" style="margin-bottom: 10px;">
-                <h2 style="margin: 0;">About</h2>
-                <button class="icon-btn" onclick="alert('Edit About coming soon!')">
-                    <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
-                </button>
-            </div>
-            <p style="color: #4b5563; line-height: 1.6;">
-                Passionate about protecting digital systems and empowering organizations to stay resilient against cyber threats. Always eager to learn new technologies and swap skills with the community.
-            </p>
-        </div>
-
-        <div class="profile-card">
-            <div class="flex-row-between" style="margin-bottom: 15px;">
-                <h2 style="margin: 0;">Skills</h2>
-                <div style="display: flex; gap: 10px;">
-                    <button class="icon-btn" onclick="alert('Add new skill coming soon!')">
-                        <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
-                    </button>
-                    <button class="icon-btn" onclick="alert('Edit Skills coming soon!')">
-                        <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <div class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px;">
-                <span class="skill-tag">Penetration Testing</span>
-                <span class="skill-tag">JavaScript</span>
-                <span class="skill-tag">Linux</span>
-                <span class="skill-tag">Web Security</span>
-            </div>
-        </div>
-
-    </main>
-
-    <script src="script.js"></script>
-    <script>
-        // Ensure Lucide icons render on this specific page
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+                    
+                    <p class="profile-headline" id="profile-headline" style="min-height: 24px; margin: 5px 0; color: #1f2937;"></p>
+                    
+                    <div class="flex-row-between" style="justify-content: flex-start; gap: 10px;">
+                        <p class="profile-location" id="profile-location" style="min-height: 20px; margin: 0; color: #6b7280; font-size: 0.9rem;"></p>
+                        <button class="icon-btn" style="padding: 4px;" onclick="editProfileField('location', 'Enter your city and state:')">
+                            <i data-
