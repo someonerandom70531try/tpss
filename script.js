@@ -44,3 +44,8 @@ function handleLogin(event) {
     alert("Welcome back! Redirecting to dashboard...");
     window.location.href = "index.html"; 
 }
+
+// Initialize Supabase
+const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
