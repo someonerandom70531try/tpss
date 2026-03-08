@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In | Skill Swap</title>
+    <title>Authentication | Skill Swap</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -12,8 +12,7 @@
 <body class="auth-body">
     
     <a href="index.html" class="back-link">
-        <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i>
-        Back to Home
+        <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i> Back
     </a>
 
     <div class="auth-wrapper">
@@ -23,48 +22,50 @@
                     <i data-lucide="sparkles" class="primary-icon"></i>
                     <span>SkillSwap</span>
                 </div>
-                <h2>Welcome back</h2>
-                <p>Enter your email below to log into your account</p>
+                <h2 id="auth-title">Welcome Back</h2>
+                <p id="auth-subtitle">Enter your details to sign in</p>
             </div>
 
-            <form id="loginForm" onsubmit="handleLogin(event)">
+            <form id="signin-form" onsubmit="handleSignIn(event)">
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" placeholder="m@example.com" required>
+                    <label>Email</label>
+                    <input type="email" id="signin-email" required>
                 </div>
-                
                 <div class="form-group">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label for="password">Password</label>
-                        <a href="#" class="forgot-link">Forgot password?</a>
-                    </div>
-                    <input type="password" id="password" required>
+                    <label>Password</label>
+                    <input type="password" id="signin-password" required>
                 </div>
-
                 <button type="submit" class="btn-primary w-full">Sign In</button>
             </form>
 
-            <div class="divider">
-                <span>Or continue with</span>
-            </div>
+            <form id="signup-form" onsubmit="handleSignUp(event)" style="display: none;">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="signup-email" required>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="signup-username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="signup-password" required>
+                    <p style="font-size: 0.75rem; color: var(--gray-600); margin-top: 4px;">
+                        8+ characters, 1 uppercase, 1 lowercase, 1 number.
+                    </p>
+                </div>
+                <button type="submit" class="btn-primary w-full">Create Account</button>
+            </form>
 
-            <div class="social-grid">
-                <button class="btn-outline social-btn">
-                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width="20">
-                    Google
-                </button>
-                <button class="btn-outline social-btn">
-                    <i data-lucide="github" style="width: 20px; height: 20px;"></i>
-                    GitHub
-                </button>
-            </div>
-
-            <p class="auth-footer">
-                Don't have an account? <a href="#" style="color: var(--primary); font-weight: 500;">Sign up</a>
+            <p class="auth-footer" style="margin-top: 24px;">
+                <span id="toggle-text">Don't have an account?</span> 
+                <a href="#" onclick="toggleAuthMode(event)" style="color: var(--primary); font-weight: 600;">
+                    <span id="toggle-link">Sign up</span>
+                </a>
             </p>
         </div>
     </div>
-
+    
     <script src="script.js"></script>
 </body>
 </html>
