@@ -1,0 +1,12 @@
+{
+  "name": "skill-swap-docker",
+  "version": "1.0.0",
+  "description": "Containerized Skill Swap frontend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
