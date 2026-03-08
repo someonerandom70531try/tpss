@@ -199,30 +199,52 @@ async function handleSignIn(event) {
 
 
 // ==========================================
-// DYNAMIC UI & LOGOUT LOGIC
+// DYNAMIC UI & DROPDOWN LOGIC
 // ==========================================
 
 function updateUIForUser() {
-    // 1. Grab the UI elements
     const loggedOutUI = document.getElementById('logged-out-ui');
     const loggedInUI = document.getElementById('logged-in-ui');
-    const greetingName = document.getElementById('user-greeting-name');
+    const avatarBtn = document.getElementById('user-avatar-btn');
+    const avatarInitial = document.getElementById('avatar-initial');
+    const dropdownUsername = document.getElementById('dropdown-username');
 
-    // Make sure we are on a page that actually has these elements (like index.html)
     if (!loggedOutUI || !loggedInUI) return;
 
-    // 2. Check browser memory for a logged-in user
     const currentUser = localStorage.getItem('currentUser');
 
     if (currentUser) {
-        // User IS logged in: Hide Sign In, Show Greeting & Logout
+        // User IS logged in
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'flex';
-        greetingName.innerText = currentUser; // Inject their actual username
+        
+        // Put the first letter of their name in the orange circle (capitalized)
+        if (avatarInitial) avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
+        
+        // This creates the hover effect with basic info
+        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
+        
+        // Put their full name in the dropdown header
+        if (dropdownUsername) dropdownUsername.innerText = currentUser;
     } else {
-        // User is NOT logged in: Show Sign In, Hide Greeting
+        // User is NOT logged in
         loggedOutUI.style.display = 'block';
         loggedInUI.style.display = 'none';
+    }
+}
+
+// Shows/Hides the dropdown when the avatar is clicked
+function toggleDropdown(event) {
+    event.stopPropagation(); // Stops the click from immediately hiding it again
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) dropdown.classList.toggle('show');
+}
+
+// Automatically close the dropdown if the user clicks anywhere else on the page
+window.onclick = function(event) {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown && dropdown.classList.contains('show')) {
+        dropdown.classList.remove('show');
     }
 }
 
@@ -236,7 +258,6 @@ function handleLogout() {
 }
 
 
-
 // ==========================================
 // 6. RUN ON PAGE LOAD
 // ==========================================
@@ -245,5 +266,4 @@ function handleLogout() {
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
-    // I REMOVED the extra toggleLink code here so it doesn't double-fire!
 });
