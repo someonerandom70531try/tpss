@@ -2,44 +2,32 @@
 // 1. INITIALIZATION & SETUP
 // ==========================================
 
-// Initialize Lucide Icons
 lucide.createIcons();
 
-// Replace these with your actual Supabase URL and anon public key
 const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
-
-// Create the Supabase connection
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-
 // ==========================================
-// 2. HOME PAGE LOGIC (index.html)
+// 2. HOME PAGE LOGIC
 // ==========================================
 
 async function loadSkills() {
     const grid = document.getElementById('skills-grid');
-    // If we aren't on the home page (no grid found), stop running this function
     if (!grid) return; 
 
-    // Fetch skills from the database
-    const { data: skills, error } = await supabaseClient
-        .from('skills')
-        .select('*')
-        .order('created_at', { ascending: false }); // Show newest first
+    const { data: skills, error } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
     if (error) {
-        console.error("Error fetching skills:", error);
         grid.innerHTML = `<p>Error loading skills. Please try again later.</p>`;
         return;
     }
 
     if (!skills || skills.length === 0) {
-        grid.innerHTML = `<p>No skills posted yet. Be the first!</p>`;
+        grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
         return;
     }
 
-    // Inject the skills into the HTML
     grid.innerHTML = skills.map(skill => `
         <div class="skill-card" style="border: 1px solid #eee; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <span class="badge" style="font-size:0.75rem; color:#8b5cf6; background:#f5f3ff; padding:4px 8px; border-radius:4px;">${skill.category}</span>
@@ -48,18 +36,15 @@ async function loadSkills() {
         </div>
     `).join('');
     
-    // Re-initialize icons for the newly added HTML
     lucide.createIcons();
 }
 
-
 // ==========================================
-// 3. AUTHENTICATION UI TOGGLE (auth.html)
+// 3. AUTHENTICATION LOGIC
 // ==========================================
 
 let isLoginMode = true;
 
-// Swaps the form between Sign In and Sign Up modes
 function toggleAuthMode(event) {
     if (event) event.preventDefault();
     isLoginMode = !isLoginMode;
@@ -70,12 +55,13 @@ function toggleAuthMode(event) {
     const authSubtitle = document.getElementById('auth-subtitle');
     const toggleText = document.getElementById('toggle-text');
     const toggleLink = document.getElementById('toggle-link');
+    const msgBox = document.getElementById('auth-message');
 
-    // Make sure we are actually on the auth page before trying to change things
     if (!signinForm || !signupForm) return;
 
+    if (msgBox) msgBox.style.display = 'none';
+
     if (isLoginMode) {
-        // Show Login UI
         signinForm.style.display = 'block';
         signupForm.style.display = 'none';
         authTitle.innerText = 'Welcome Back';
@@ -83,7 +69,6 @@ function toggleAuthMode(event) {
         toggleText.innerText = "Don't have an account?";
         toggleLink.innerText = 'Sign up';
     } else {
-        // Show Sign Up UI
         signinForm.style.display = 'none';
         signupForm.style.display = 'block';
         authTitle.innerText = 'Create an Account';
@@ -93,10 +78,13 @@ function toggleAuthMode(event) {
     }
 }
 
-
-// ==========================================
-// 4. MANUAL SIGN UP LOGIC (auth.html)
-// ==========================================
+function showAuthMessage(message, isError = true) {
+    const msgBox = document.getElementById('auth-message');
+    if (!msgBox) return;
+    msgBox.innerText = message;
+    msgBox.className = isError ? 'auth-message error' : 'auth-message success';
+    msgBox.style.display = 'block';
+}
 
 async function handleSignUp(event) {
     if (event) event.preventDefault();
@@ -105,63 +93,34 @@ async function handleSignUp(event) {
     const username = document.getElementById('signup-username').value.trim();
     const password = document.getElementById('signup-password').value;
 
-    // Password Rules Validation
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(password)) {
-        alert("Password must be at least 8 characters long, and include an uppercase letter, a lowercase letter, and a number.");
+        showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number.");
         return;
     }
 
-    // Check if username or email is already taken in 'app_users'
-    const { data: existingUsers, error: checkError } = await supabaseClient
-        .from('app_users')
-        .select('*')
-        .or(`username.eq.${username},email.eq.${email}`);
-
-    if (checkError) {
-        console.error("Database error during validation:", checkError);
-        return;
-    }
+    const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
 
     if (existingUsers && existingUsers.length > 0) {
-        alert("That username or email is already taken! Please choose another.");
+        showAuthMessage("That username or email is already taken.");
         return;
     }
 
-    // Insert new user into 'app_users' table
-    const { data: newUser, error: insertError } = await supabaseClient
-        .from('app_users')
-        .insert([{ email: email, username: username, password: password }])
-        .select() // Ask Supabase to return the data it just inserted
-        .single();
+    const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
 
     if (insertError) {
-        alert("Error creating account: " + insertError.message);
+        showAuthMessage("Error creating account. Please try again.");
         return;
     }
 
-    // Link a blank profile to the new user in the 'profiles' table
     if (newUser) {
-        const { error: profileError } = await supabaseClient
-            .from('profiles')
-            .insert([{ user_id: newUser.id }]);
-            
-        if (profileError) {
-            console.error("Warning: Profile link failed, but user was created.", profileError);
-        }
+        await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
     }
 
-    alert("Account created successfully! Please sign in with your new credentials.");
-    
-    // Clear the form and flip back to the Sign In view
     document.getElementById('signup-form').reset();
+    showAuthMessage("Account created successfully! Please sign in.", false);
     toggleAuthMode(); 
 }
-
-
-// ==========================================
-// 5. MANUAL SIGN IN LOGIC (auth.html)
-// ==========================================
 
 async function handleSignIn(event) {
     if (event) event.preventDefault();
@@ -169,37 +128,22 @@ async function handleSignIn(event) {
     const email = document.getElementById('signin-email').value.trim();
     const password = document.getElementById('signin-password').value;
 
-    // Ask the 'app_users' table if these exact credentials exist
-    const { data, error } = await supabaseClient
-        .from('app_users')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password);
+    const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
 
-    if (error) {
-        console.error("Database error during login:", error);
-        alert("An error occurred. Please try again.");
+    if (error || !data || data.length === 0) {
+        showAuthMessage("Invalid email or password.");
         return;
     }
 
-    // If a match is found, log them in
-    if (data && data.length > 0) {
-        const user = data[0];
-        
-        // Save user data locally so the browser remembers they are logged in
-        localStorage.setItem('currentUserId', user.id);
-        localStorage.setItem('currentUser', user.username);
-        
-        alert(`Sign in successful! Welcome back, ${user.username}!`);
-        window.location.href = "index.html";
-    } else {
-        alert("Invalid email or password. Please try again.");
-    }
+    const user = data[0];
+    localStorage.setItem('currentUserId', user.id);
+    localStorage.setItem('currentUser', user.username);
+    window.location.href = "index.html";
 }
 
 
 // ==========================================
-// DYNAMIC UI & DROPDOWN LOGIC
+// 4. UI LOGIC (Dropdowns & Session)
 // ==========================================
 
 function updateUIForUser() {
@@ -208,48 +152,30 @@ function updateUIForUser() {
     const avatarBtn = document.getElementById('user-avatar-btn');
     const avatarInitial = document.getElementById('avatar-initial');
     const dropdownUsername = document.getElementById('dropdown-username');
-    
-    // NEW: Grab the profile page elements
-    const profilePageName = document.getElementById('profile-page-name');
-    const profilePageInitial = document.getElementById('profile-page-initial');
 
     if (!loggedOutUI || !loggedInUI) return;
 
     const currentUser = localStorage.getItem('currentUser');
 
     if (currentUser) {
-        // User IS logged in
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'flex';
         
-        // Put the first letter of their name in the orange circle (capitalized)
         if (avatarInitial) avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
-        
-        // This creates the hover effect with basic info
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
-        
-        // Put their full name in the dropdown header
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
-        
-        // NEW: Populate the account.html page with the user's details
-        if (profilePageName) profilePageName.innerText = currentUser;
-        if (profilePageInitial) profilePageInitial.innerText = currentUser.charAt(0).toUpperCase();
-        
     } else {
-        // User is NOT logged in
         loggedOutUI.style.display = 'block';
         loggedInUI.style.display = 'none';
     }
 }
 
-// Shows/Hides the dropdown when the avatar is clicked
 function toggleDropdown(event) {
-    event.stopPropagation(); // Stops the click from immediately hiding it again
+    event.stopPropagation(); 
     const dropdown = document.getElementById('user-dropdown');
     if (dropdown) dropdown.classList.toggle('show');
 }
 
-// Automatically close the dropdown if the user clicks anywhere else on the page
 window.onclick = function(event) {
     const dropdown = document.getElementById('user-dropdown');
     if (dropdown && dropdown.classList.contains('show')) {
@@ -258,16 +184,13 @@ window.onclick = function(event) {
 }
 
 function handleLogout() {
-    // Clear the user from the browser's memory
     localStorage.removeItem('currentUserId');
     localStorage.removeItem('currentUser');
-    
-    // Refresh the page so the UI resets
-    window.location.reload();
+    window.location.href = "index.html";
 }
 
 // ==========================================
-// PROFILE PAGE LOGIC (account.html)
+// 5. PROFILE PAGE LOGIC
 // ==========================================
 
 async function loadUserProfile() {
@@ -282,8 +205,6 @@ async function loadUserProfile() {
 
     if (user) {
         document.getElementById('profile-page-name').innerText = user.username;
-        
-        // Only show the big initial if there is no custom avatar uploaded
         const initialDiv = document.getElementById('profile-page-initial');
         if (!profile || !profile.avatar_url) {
             initialDiv.innerText = user.username.charAt(0).toUpperCase();
@@ -292,12 +213,10 @@ async function loadUserProfile() {
     }
 
     if (profile) {
-        // Inject text (or leave blank)
         document.getElementById('profile-headline').innerText = profile.headline || "";
         document.getElementById('profile-location').innerText = profile.location || "";
         document.getElementById('profile-bio').innerText = profile.bio || "";
         
-        // Handle Banner Image
         const bannerImg = document.getElementById('profile-banner-img');
         if (profile.banner_url) {
             bannerImg.style.display = 'block';
@@ -305,10 +224,9 @@ async function loadUserProfile() {
             bannerImg.parentElement.style.backgroundColor = 'transparent';
         } else {
             bannerImg.style.display = 'none'; 
-            bannerImg.parentElement.style.backgroundColor = '#d1d5db'; // Blank grey box
+            bannerImg.parentElement.style.backgroundColor = '#d1d5db'; 
         }
 
-        // Handle Avatar Image
         const imgElement = document.getElementById('profile-avatar-img');
         if (profile.avatar_url) {
             document.getElementById('profile-page-initial').style.display = 'none';
@@ -318,7 +236,6 @@ async function loadUserProfile() {
             imgElement.style.display = 'none';
         }
 
-        // Handle Skills
         const skillsContainer = document.getElementById('profile-skills-container');
         if (profile.profile_skills) {
             const skillsArray = profile.profile_skills.split(',');
@@ -331,37 +248,50 @@ async function loadUserProfile() {
     }
 }
 
-// Master function for editing fields
-async function editProfileField(fieldName, promptMessage) {
+// --- CUSTOM MODAL LOGIC ---
+function closeModal() {
+    const modal = document.getElementById('custom-edit-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function editProfileField(fieldName, promptMessage) {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
 
-    const newValue = prompt(promptMessage);
-    
-    // If they hit cancel, stop.
-    if (newValue === null) return; 
+    const modal = document.getElementById('custom-edit-modal');
+    const title = document.getElementById('modal-title');
+    const input = document.getElementById('modal-input');
+    const saveBtn = document.getElementById('modal-save-btn');
 
-    if (fieldName === 'username') {
-        if (newValue.trim() === "") {
-            alert("Username cannot be empty!");
-            return;
+    if (!modal) return;
+
+    title.innerText = promptMessage;
+    input.value = ''; 
+    modal.style.display = 'flex';
+
+    saveBtn.onclick = async function() {
+        const newValue = input.value.trim();
+        closeModal();
+
+        if (newValue === "" && fieldName === 'username') {
+            console.error("Username cannot be empty");
+            return; 
         }
-        const { error } = await supabaseClient.from('app_users').update({ username: newValue.trim() }).eq('id', userId);
-        if (error) {
-            alert("Error updating username: " + error.message);
+
+        if (fieldName === 'username') {
+            const { error } = await supabaseClient.from('app_users').update({ username: newValue }).eq('id', userId);
+            if (!error) {
+                localStorage.setItem('currentUser', newValue);
+                updateUIForUser(); 
+                loadUserProfile(); 
+            }
         } else {
-            localStorage.setItem('currentUser', newValue.trim());
-            updateUIForUser(); 
-            loadUserProfile(); 
+            const { error } = await supabaseClient.from('profiles').update({ [fieldName]: newValue }).eq('user_id', userId);
+            if (!error) {
+                loadUserProfile(); 
+            }
         }
-    } else {
-        const { error } = await supabaseClient.from('profiles').update({ [fieldName]: newValue.trim() }).eq('user_id', userId);
-        if (error) {
-            alert("Error updating profile: " + error.message);
-        } else {
-            loadUserProfile(); 
-        }
-    }
+    };
 }
 
 // ==========================================
@@ -371,7 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
     
-    // Check if we are on the account page, and load the user data
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
     }
