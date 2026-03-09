@@ -17,9 +17,19 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     </script>
 
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
     <style>
         .cert-card-wrapper .cert-actions-overlay { opacity: 0; transition: opacity 0.2s ease-in-out; }
         .cert-card-wrapper:hover .cert-actions-overlay { opacity: 1; }
+        
+        /* Drag and Drop Ghost Styling */
+        .sortable-ghost { 
+            opacity: 0.4; 
+            background-color: #f9fafb !important; 
+            border: 2px dashed #8b5cf6 !important; 
+        }
+        .skill-tag:active, .cert-card-wrapper:active { cursor: grabbing !important; }
     </style>
 </head>
 <body style="background-color: #f3f2ef;"> 
