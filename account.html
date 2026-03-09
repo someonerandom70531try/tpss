@@ -9,7 +9,9 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body style="background-color: #f3f2ef;"> <nav class="navbar">
+<body style="background-color: #f3f2ef;"> 
+    
+    <nav class="navbar">
         <div class="nav-container">
             <div class="logo">
                 <i data-lucide="sparkles" class="primary-icon"></i>
@@ -17,11 +19,9 @@
             </div>
             <div class="nav-actions">
                 <div id="auth-container" style="position: relative;">
-                    
                     <div id="logged-out-ui">
                         <a href="auth.html" class="btn-primary">Sign In</a>
                     </div>
-                    
                     <div id="logged-in-ui" style="display: none; align-items: center;">
                         <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)">
                             <span id="avatar-initial"></span>
@@ -40,7 +40,6 @@
                             </button>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
@@ -48,8 +47,7 @@
 
     <main class="profile-container">
         
-        <div class="profile-card">
-            
+        <div class="profile-card" style="padding: 0;">
             <div class="profile-banner edit-hover-group" onclick="editProfileField('banner_url', 'Paste a new banner image URL:')">
                 <img id="profile-banner-img" src="" alt="Banner Background" style="display: none;">
                 <div class="edit-overlay">
@@ -73,9 +71,7 @@
                             <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
                         </button>
                     </div>
-                    
                     <p class="profile-headline" id="profile-headline" style="min-height: 24px; margin: 5px 0; color: #1f2937;"></p>
-                    
                     <div class="flex-row-between" style="justify-content: flex-start; gap: 10px;">
                         <p class="profile-location" id="profile-location" style="min-height: 20px; margin: 0; color: #6b7280; font-size: 0.9rem;"></p>
                         <button class="icon-btn" style="padding: 4px;" onclick="editProfileField('location', 'Enter your city and state:')">
@@ -99,20 +95,26 @@
         <div class="profile-card">
             <div class="flex-row-between" style="margin-bottom: 15px;">
                 <h2 style="margin: 0;">Skills</h2>
-                <button class="icon-btn" onclick="editProfileField('profile_skills', 'Enter your skills separated by commas (e.g., Linux, React, Python):')">
+                <button class="icon-btn" onclick="editProfileField('profile_skills', 'Enter skills separated by commas (e.g., Linux, React):')">
                     <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
                 </button>
             </div>
             <div id="profile-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;">
-                </div>
+            </div>
         </div>
-
     </main>
 
+    <div id="custom-edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title">Edit Field</h3>
+            <textarea id="modal-input" class="modal-input" rows="3" placeholder="Type here..."></textarea>
+            <div class="modal-actions">
+                <button onclick="closeModal()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
+                <button id="modal-save-btn" class="btn-primary" style="padding: 8px 16px;">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
-    <script>
-        // Ensure Lucide icons render specifically on this page
-        lucide.createIcons();
-    </script>
 </body>
 </html>
