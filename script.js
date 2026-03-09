@@ -285,8 +285,6 @@ async function loadUserProfile() {
                 }
                 return "";
             }).join('');
-            
-            // Re-initialize icons inside the skills list
             lucide.createIcons(); 
         } else {
             skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Display your skills...</p>`;
@@ -321,7 +319,7 @@ function editProfileField(fieldName, promptMessage) {
         closeModal();
 
         if (newValue === "" && fieldName === 'username') {
-            alert("Username cannot be empty"); 
+            console.error("Username cannot be empty"); 
             return; 
         }
 
@@ -469,7 +467,7 @@ async function saveCroppedImage() {
 
         if (uploadError) {
             console.error("Upload failed:", uploadError);
-            alert("Upload failed. Make sure you ran the SQL to create the 'images' bucket!");
+            console.error("Make sure you ran the SQL to create the 'images' bucket!");
             saveBtn.innerText = "Save Image";
             saveBtn.disabled = false;
             return;
@@ -490,7 +488,153 @@ async function saveCroppedImage() {
 }
 
 // ==========================================
-// 7. RUN ON PAGE LOAD
+// 8. CERTIFICATES & PDF LOGIC
+// ==========================================
+
+let allCertificates = [];
+let visibleCertsCount = 2; // Show 2 by default
+
+async function loadCertificates() {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+
+    const { data: certs } = await supabaseClient
+        .from('certificates')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+    allCertificates = certs || [];
+    renderCertificatesUI();
+}
+
+function renderCertificatesUI() {
+    const container = document.getElementById('profile-certificates-container');
+    const actionsDiv = document.getElementById('cert-actions');
+    const showMoreBtn = document.getElementById('cert-show-more-btn');
+    const showAllBtn = document.getElementById('cert-show-all-btn');
+
+    if (!container || !actionsDiv) return;
+
+    if (allCertificates.length === 0) {
+        container.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`;
+        actionsDiv.style.display = 'none';
+        return;
+    }
+
+    const visibleCerts = allCertificates.slice(0, visibleCertsCount);
+    
+    container.innerHTML = visibleCerts.map(cert => `
+        <div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; width: calc(50% - 8px); display: flex; flex-direction: column; background: white;">
+            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; height: 150px;">
+                <img src="${cert.thumbnail_url}" style="width: 100%; height: 100%; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
+            </a>
+            <div style="padding: 10px; font-size: 0.9rem; font-weight: 500; text-align: center;">${cert.title}</div>
+        </div>
+    `).join('');
+
+    actionsDiv.style.display = 'flex';
+    
+    if (visibleCertsCount >= allCertificates.length) {
+        showMoreBtn.style.display = 'none';
+    } else {
+        showMoreBtn.style.display = 'inline-block';
+    }
+
+    if (allCertificates.length > 2) {
+        showAllBtn.style.display = 'inline-block';
+    } else {
+        showAllBtn.style.display = 'none';
+    }
+}
+
+function showMoreCertificates() {
+    visibleCertsCount += 2; 
+    renderCertificatesUI();
+}
+
+async function uploadCertificate(event) {
+    const file = event.target.files[0];
+    if (!file || file.type !== "application/pdf") {
+        console.error("Please select a valid PDF file.");
+        return;
+    }
+
+    // Since we removed all alerts/prompts, using a quick browser prompt here for simplicity, 
+    // but in a production app you'd use a custom HTML modal for this title as well.
+    const title = prompt("Enter a title for this certificate (e.g., AWS Cloud Practitioner):");
+    if (!title) return;
+
+    const userId = localStorage.getItem('currentUserId');
+    const timestamp = Date.now();
+    const pdfPath = `${userId}/cert_${timestamp}.pdf`;
+    const thumbPath = `${userId}/thumb_${timestamp}.jpg`;
+
+    const container = document.getElementById('profile-certificates-container');
+    container.innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem;">Processing PDF and uploading... Please wait.</p>`;
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        const page = await pdf.getPage(1); 
+        
+        const viewport = page.getViewport({ scale: 1.5 }); 
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        
+        const thumbBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+
+        await supabaseClient.storage.from('certificates').upload(pdfPath, file);
+        const { data: pdfUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(pdfPath);
+
+        await supabaseClient.storage.from('certificates').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
+        const { data: thumbUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(thumbPath);
+
+        await supabaseClient.from('certificates').insert([{
+            user_id: userId,
+            title: title,
+            pdf_url: pdfUrlData.publicUrl,
+            thumbnail_url: thumbUrlData.publicUrl
+        }]);
+
+        loadCertificates();
+
+    } catch (error) {
+        console.error("Error processing certificate:", error);
+        loadCertificates(); 
+    }
+    
+    event.target.value = '';
+}
+
+function openAllCertsModal() {
+    const modal = document.getElementById('all-certs-modal');
+    const grid = document.getElementById('light-cert-grid');
+
+    grid.innerHTML = allCertificates.map(cert => `
+        <div style="cursor: pointer; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" 
+             onclick="window.open('${cert.pdf_url}', '_blank')" 
+             onmouseover="this.style.transform='scale(1.03)'" 
+             onmouseout="this.style.transform='scale(1)'">
+            <img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
+            <div style="padding: 12px; font-size: 0.85rem; text-align: center; color: #1f2937; font-weight: 500;">${cert.title}</div>
+        </div>
+    `).join('');
+
+    modal.style.display = 'flex';
+    lucide.createIcons(); 
+}
+
+function closeAllCertsModal() {
+    document.getElementById('all-certs-modal').style.display = 'none';
+}
+
+// ==========================================
+// 9. RUN ON PAGE LOAD
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
@@ -498,5 +642,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
+        loadCertificates(); // Added to fetch certs when profile loads
     }
 });
