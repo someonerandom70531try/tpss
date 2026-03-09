@@ -292,7 +292,6 @@ async function loadUserProfile() {
     }
 }
 
-// --- PROFILE EDIT LOGIC ---
 function closeModal() {
     const modal = document.getElementById('custom-edit-modal');
     if (modal) modal.style.display = 'none';
@@ -337,7 +336,6 @@ function editProfileField(fieldName, promptMessage) {
     };
 }
 
-// --- INDIVIDUAL SKILL LOGIC ---
 function addSingleSkill() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
@@ -467,7 +465,6 @@ async function saveCroppedImage() {
 
         if (uploadError) {
             console.error("Upload failed:", uploadError);
-            console.error("Make sure you ran the SQL to create the 'images' bucket!");
             saveBtn.innerText = "Save Image";
             saveBtn.disabled = false;
             return;
@@ -517,21 +514,34 @@ function renderCertificatesUI() {
     if (!container || !actionsDiv) return;
 
     if (allCertificates.length === 0) {
-        container.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`;
+        container.innerHTML = `<p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`;
         actionsDiv.style.display = 'none';
         return;
     }
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
     
+    // UPDATED: Now set to width 100% to fill the entire horizontal space!
     container.innerHTML = visibleCerts.map(cert => `
-        <div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; width: calc(50% - 8px); display: flex; flex-direction: column; background: white;">
-            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; height: 150px;">
-                <img src="${cert.thumbnail_url}" style="width: 100%; height: 100%; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
+        <div class="cert-card-wrapper" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            
+            <div class="cert-actions-overlay" style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;">
+                <button onclick="renameCertificate(${cert.id}, '${cert.title.replace(/'/g, "\\'")}')" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Rename">
+                    <i data-lucide="pencil" style="width: 16px; height: 16px; color: #4b5563;"></i>
+                </button>
+                <button onclick="deleteCertificate(${cert.id})" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Delete">
+                    <i data-lucide="x" style="width: 16px; height: 16px; color: #ef4444;"></i>
+                </button>
+            </div>
+
+            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;">
+                <img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
             </a>
-            <div style="padding: 10px; font-size: 0.9rem; font-weight: 500; text-align: center;">${cert.title}</div>
+            <div style="padding: 15px; font-size: 1rem; font-weight: 500; text-align: center; color: #111827;">${cert.title}</div>
         </div>
     `).join('');
+
+    lucide.createIcons(); // Re-render the x and pencil icons
 
     actionsDiv.style.display = 'flex';
     
@@ -553,6 +563,7 @@ function showMoreCertificates() {
     renderCertificatesUI();
 }
 
+// REMOVED `prompt()`, NOW USES CUSTOM MODAL
 async function uploadCertificate(event) {
     const file = event.target.files[0];
     if (!file || file.type !== "application/pdf") {
@@ -560,18 +571,44 @@ async function uploadCertificate(event) {
         return;
     }
 
-    // Since we removed all alerts/prompts, using a quick browser prompt here for simplicity, 
-    // but in a production app you'd use a custom HTML modal for this title as well.
-    const title = prompt("Enter a title for this certificate (e.g., AWS Cloud Practitioner):");
-    if (!title) return;
+    const modal = document.getElementById('custom-edit-modal');
+    const titleEl = document.getElementById('modal-title');
+    const inputEl = document.getElementById('modal-input');
+    const saveBtn = document.getElementById('modal-save-btn');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
 
+    titleEl.innerText = "Name your Certificate";
+    inputEl.value = "";
+    inputEl.placeholder = "e.g., AWS Cloud Practitioner";
+    modal.style.display = 'flex';
+
+    // Hook up the save button to trigger the backend upload
+    saveBtn.onclick = async function() {
+        const title = inputEl.value.trim();
+        if (!title) return; // Prevent saving empty titles
+        
+        closeModal();
+        await processAndUploadCertificate(file, title);
+    };
+
+    // If they cancel, clear the file input so they can try again later
+    const originalCancel = cancelBtn.onclick;
+    cancelBtn.onclick = function() {
+        closeModal();
+        event.target.value = ''; 
+        cancelBtn.onclick = originalCancel; 
+    };
+}
+
+// Heavy lifting function for the PDF upload
+async function processAndUploadCertificate(file, title) {
     const userId = localStorage.getItem('currentUserId');
     const timestamp = Date.now();
     const pdfPath = `${userId}/cert_${timestamp}.pdf`;
     const thumbPath = `${userId}/thumb_${timestamp}.jpg`;
 
     const container = document.getElementById('profile-certificates-container');
-    container.innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem;">Processing PDF and uploading... Please wait.</p>`;
+    container.innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem; text-align: center;">Processing PDF and uploading... Please wait.</p>`;
 
     try {
         const arrayBuffer = await file.arrayBuffer();
@@ -607,8 +644,44 @@ async function uploadCertificate(event) {
         console.error("Error processing certificate:", error);
         loadCertificates(); 
     }
-    
-    event.target.value = '';
+}
+
+// NEW: Rename a Certificate
+function renameCertificate(id, currentTitle) {
+    const modal = document.getElementById('custom-edit-modal');
+    const titleEl = document.getElementById('modal-title');
+    const inputEl = document.getElementById('modal-input');
+    const saveBtn = document.getElementById('modal-save-btn');
+
+    titleEl.innerText = "Rename Certificate";
+    inputEl.value = currentTitle;
+    inputEl.placeholder = "Enter new name...";
+    modal.style.display = 'flex';
+
+    saveBtn.onclick = async function() {
+        const newTitle = inputEl.value.trim();
+        closeModal();
+
+        if (!newTitle || newTitle === currentTitle) return;
+
+        const { error } = await supabaseClient
+            .from('certificates')
+            .update({ title: newTitle })
+            .eq('id', id);
+
+        if (!error) loadCertificates();
+    };
+}
+
+// NEW: Delete a Certificate
+async function deleteCertificate(id) {
+    // Delete the database entry (Storage cleanup can be added later if needed)
+    const { error } = await supabaseClient
+        .from('certificates')
+        .delete()
+        .eq('id', id);
+
+    if (!error) loadCertificates();
 }
 
 function openAllCertsModal() {
@@ -642,6 +715,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
-        loadCertificates(); // Added to fetch certs when profile loads
+        loadCertificates(); 
     }
 });
