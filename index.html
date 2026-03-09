@@ -14,9 +14,9 @@
         <div class="nav-container">
             <div class="logo">
                 <i data-lucide="sparkles" class="primary-icon"></i>
-                <span>SkillSwap</span>
+                <a href="index.html" style="text-decoration: none; color: inherit;"><span>SkillSwap</span></a>
             </div>
-           <div class="nav-actions">
+            <div class="nav-actions">
                 <div id="auth-container" style="position: relative;">
                     
                     <div id="logged-out-ui">
@@ -24,9 +24,8 @@
                     </div>
 
                     <div id="logged-in-ui" style="display: none; align-items: center;">
-                        
                         <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)">
-                            <span id="avatar-initial">U</span>
+                            <span id="avatar-initial"></span>
                         </button>
 
                         <div id="user-dropdown" class="dropdown-menu">
@@ -35,16 +34,13 @@
                                 <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
                             </div>
                             <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
-                            
                             <a href="account.html" class="dropdown-item">
                                 <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
                             </a>
-                            
                             <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
                                 <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
                             </button>
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -60,17 +56,18 @@
             <div class="search-box">
                 <i data-lucide="search"></i>
                 <input type="text" placeholder="Search skills like 'Piano' or 'React'...">
-                <button>Search</button>
+                <button class="btn-primary">Search</button>
             </div>
         </div>
     </header>
 
-    <main class="main-content">
-        <div class="grid-header">
+    <main class="main-content" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
+        <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Explore Skills</h2>
-            <button class="btn-outline">+ Post a Skill</button>
+            <button class="btn-outline" onclick="alert('Post a skill modal coming soon!')">+ Post a Skill</button>
         </div>
-        <div id="skills-grid" class="skills-grid">
+        
+        <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
             </div>
     </main>
 
