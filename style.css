@@ -173,3 +173,82 @@ body {
     border-radius: 6px; font-family: inherit; box-sizing: border-box; resize: vertical;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+
+/* ==========================================
+   CERTIFICATES & DARK MODAL GALLERY
+   ========================================== */
+
+.cert-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    width: calc(50% - 5px); /* Two columns */
+    display: flex;
+    flex-direction: column;
+    background: white;
+}
+
+.cert-thumb {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cert-info {
+    padding: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Dark Modal mimicking the screenshot */
+.dark-modal-content {
+    background: #1e1e1e; /* Dark background */
+    padding: 30px;
+    border-radius: 10px;
+    width: 95%;
+    max-width: 900px;
+    max-height: 85vh;
+    overflow-y: auto;
+    color: white;
+}
+
+.dark-modal-content h3 {
+    color: white;
+    margin-top: 0;
+    border-bottom: 1px solid #333;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+.cert-grid-dark {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 25px;
+}
+
+.dark-cert-item {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.dark-cert-item:hover {
+    transform: scale(1.05);
+}
+
+.dark-cert-thumb {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+    background: white;
+    border: 1px solid #444;
+}
+
+.dark-cert-title {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    text-align: center;
+    color: #cccccc;
+}
