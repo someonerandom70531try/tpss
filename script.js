@@ -258,9 +258,10 @@ async function loadUserProfile() {
     }
 
     if (profile) {
-        document.getElementById('profile-headline').innerText = profile.headline || "";
-        document.getElementById('profile-location').innerText = profile.location || "";
-        document.getElementById('profile-bio').innerText = profile.bio || "";
+        // --- NEW: Custom placeholder text for empty fields ---
+        document.getElementById('profile-headline').innerText = profile.headline || "Add a professional headline...";
+        document.getElementById('profile-location').innerText = profile.location || "Where are you based?";
+        document.getElementById('profile-bio').innerText = profile.bio || "Tell us about yourself...";
         
         const bannerImg = document.getElementById('profile-banner-img');
         if (profile.banner_url) {
@@ -282,13 +283,14 @@ async function loadUserProfile() {
         }
 
         const skillsContainer = document.getElementById('profile-skills-container');
-        if (profile.profile_skills) {
+        // --- NEW: Custom placeholder for the skills container ---
+        if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
             skillsContainer.innerHTML = skillsArray.map(skill => 
                 skill.trim() !== "" ? `<span class="skill-tag">${skill.trim()}</span>` : ""
             ).join('');
         } else {
-            skillsContainer.innerHTML = "";
+            skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Display your skills...</p>`;
         }
     }
 }
