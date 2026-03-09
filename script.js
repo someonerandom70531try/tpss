@@ -319,6 +319,121 @@ function editProfileField(fieldName, promptMessage) {
 }
 
 // ==========================================
+// IMAGE UPLOAD & CROP LOGIC
+// ==========================================
+
+let cropper = null;
+let currentImageField = ''; // Keeps track of if we are editing avatar_url or banner_url
+
+function openImageEditor(fieldName) {
+    currentImageField = fieldName;
+    
+    // Set up the modal UI for a fresh start
+    document.getElementById('image-modal-title').innerText = fieldName === 'avatar_url' ? 'Update Profile Picture' : 'Update Banner';
+    document.getElementById('image-editor-modal').style.display = 'flex';
+    document.getElementById('image-source-options').style.display = 'block';
+    document.getElementById('cropper-container').style.display = 'none';
+    document.getElementById('save-cropped-btn').style.display = 'none';
+    document.getElementById('link-upload-input').value = '';
+    
+    // Destroy any old cropper instance if it exists
+    if(cropper) { cropper.destroy(); cropper = null; }
+}
+
+function closeImageEditor() {
+    document.getElementById('image-editor-modal').style.display = 'none';
+    if(cropper) { cropper.destroy(); cropper = null; }
+}
+
+// Handles when a user picks a file from their computer/phone
+function loadFileIntoCropper(event) {
+    const file = event.target.files[0];
+    if(!file) return;
+    
+    // Create a temporary local URL for the image so Cropper can see it
+    const url = URL.createObjectURL(file);
+    initCropper(url);
+}
+
+// Handles when a user pastes a link
+function loadLinkIntoCropper() {
+    const url = document.getElementById('link-upload-input').value.trim();
+    if(!url) return;
+    initCropper(url);
+}
+
+// Starts the Cropper.js engine
+function initCropper(imageUrl) {
+    const imageElement = document.getElementById('image-to-crop');
+    
+    // Add crossOrigin to prevent security errors when cropping external links
+    imageElement.crossOrigin = "anonymous"; 
+    imageElement.src = imageUrl;
+    
+    // Swap the UI to show the cropping area
+    document.getElementById('image-source-options').style.display = 'none';
+    document.getElementById('cropper-container').style.display = 'block';
+    document.getElementById('save-cropped-btn').style.display = 'block';
+
+    // Set the crop box shape based on what we are editing
+    // Avatar = 1:1 (Square), Banner = 4:1 (Wide Rectangle)
+    const ratio = currentImageField === 'avatar_url' ? 1 / 1 : 4 / 1;
+
+    if(cropper) cropper.destroy();
+    cropper = new Cropper(imageElement, {
+        aspectRatio: ratio,
+        viewMode: 1, // Restricts crop box to not exceed the canvas
+        background: false,
+        zoomable: true,
+        dragMode: 'move' // Makes it feel like dragging on Google/LinkedIn
+    });
+}
+
+// Cuts the image, uploads it to Supabase Storage, and saves the link
+async function saveCroppedImage() {
+    if(!cropper) return;
+    
+    const saveBtn = document.getElementById('save-cropped-btn');
+    saveBtn.innerText = "Uploading...";
+    saveBtn.disabled = true;
+
+    // 1. Get the final cropped image as a digital file (Blob)
+    cropper.getCroppedCanvas().toBlob(async (blob) => {
+        const userId = localStorage.getItem('currentUserId');
+        
+        // Give the file a unique name based on time
+        const fileName = `${userId}_${currentImageField}_${Date.now()}.jpg`;
+
+        // 2. Upload the file to our new 'images' bucket in Supabase
+        const { error: uploadError } = await supabaseClient.storage
+            .from('images')
+            .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+        if (uploadError) {
+            console.error("Upload failed:", uploadError);
+            alert("Upload failed. Make sure you ran the SQL to create the 'images' bucket!");
+            saveBtn.innerText = "Save Image";
+            saveBtn.disabled = false;
+            return;
+        }
+
+        // 3. Ask Supabase for the public web address of the file we just uploaded
+        const { data: urlData } = supabaseClient.storage.from('images').getPublicUrl(fileName);
+        const finalUrl = urlData.publicUrl;
+
+        // 4. Save that URL to the user's profile in the database
+        await supabaseClient.from('profiles').update({ [currentImageField]: finalUrl }).eq('user_id', userId);
+
+        // 5. Clean up the UI and reload the page with the new image!
+        closeImageEditor();
+        loadUserProfile();
+        
+        saveBtn.innerText = "Save Image";
+        saveBtn.disabled = false;
+    }, 'image/jpeg');
+}
+
+// ==========================================
 // 6. RUN ON PAGE LOAD
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
