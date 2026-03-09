@@ -62,7 +62,7 @@ function toggleAuthMode(event) {
 
     if (isLoginMode) {
         signinForm.style.display = 'block';
-        signinForm.style.display = 'none';
+        signupForm.style.display = 'none';
         authTitle.innerText = 'Welcome Back';
         authSubtitle.innerText = 'Enter your details to sign in';
         toggleText.innerText = "Don't have an account?";
@@ -275,7 +275,7 @@ async function loadUserProfile() {
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
             
-            // Add custom data-skill attribute and grab cursor
+            // SKILLS are still draggable
             skillsContainer.innerHTML = skillsArray.map(skill => {
                 const s = skill.trim();
                 if (s !== "") {
@@ -289,17 +289,14 @@ async function loadUserProfile() {
             }).join('');
             lucide.createIcons(); 
             
-            // --- NEW: INITIALIZE SORTABLE FOR SKILLS ---
             if (window.skillsSortable) window.skillsSortable.destroy();
             window.skillsSortable = new Sortable(skillsContainer, {
                 animation: 150,
                 ghostClass: 'sortable-ghost',
                 onEnd: async function () {
-                    // Extract the new order directly from the DOM
                     const newSkills = Array.from(skillsContainer.querySelectorAll('.skill-tag'))
                         .map(el => el.getAttribute('data-skill'))
                         .join(', ');
-                    
                     await supabaseClient.from('profiles').update({ profile_skills: newSkills }).eq('user_id', userId);
                 }
             });
@@ -513,13 +510,12 @@ async function loadCertificates() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
 
-    // --- NEW: Added ordering by display_order ---
     const { data: certs } = await supabaseClient
         .from('certificates')
         .select('*')
         .eq('user_id', userId)
         .order('display_order', { ascending: true })
-        .order('created_at', { ascending: false }); // Fallback if display_order is 0
+        .order('created_at', { ascending: false }); 
 
     allCertificates = certs || [];
     renderCertificatesUI();
@@ -541,9 +537,9 @@ function renderCertificatesUI() {
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
     
-    // Adding cursor: grab to the certificate card wrappers
+    // REMOVED: cursor: grab and Sortable logic from this main page container
     container.innerHTML = visibleCerts.map(cert => `
-        <div class="cert-card-wrapper" data-id="${cert.id}" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); cursor: grab;">
+        <div class="cert-card-wrapper" data-id="${cert.id}" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <div class="cert-actions-overlay" style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;">
                 <button onclick="renameCertificate(${cert.id}, '${cert.title.replace(/'/g, "\\'")}')" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Rename">
                     <i data-lucide="pencil" style="width: 16px; height: 16px; color: #4b5563;"></i>
@@ -560,26 +556,6 @@ function renderCertificatesUI() {
     `).join('');
 
     lucide.createIcons(); 
-
-    // --- NEW: INITIALIZE SORTABLE FOR CERTIFICATES ---
-    if (window.certSortable) window.certSortable.destroy();
-    window.certSortable = new Sortable(container, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        onEnd: async function (evt) {
-            // Update our local array by moving the dragged item
-            const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
-            allCertificates.splice(evt.newIndex, 0, movedItem);
-            
-            // Loop and save the exact numerical order of every item directly to Supabase
-            for (let i = 0; i < allCertificates.length; i++) {
-                allCertificates[i].display_order = i;
-                await supabaseClient.from('certificates')
-                    .update({ display_order: i })
-                    .eq('id', allCertificates[i].id);
-            }
-        }
-    });
 
     actionsDiv.style.display = 'flex';
     
@@ -669,7 +645,7 @@ async function processAndUploadCertificate(file, title) {
             title: title,
             pdf_url: pdfUrlData.publicUrl,
             thumbnail_url: thumbUrlData.publicUrl,
-            display_order: 0 // New certs go straight to the top of the stack!
+            display_order: 0 
         }]);
 
         loadCertificates();
@@ -719,18 +695,44 @@ function openAllCertsModal() {
     const modal = document.getElementById('all-certs-modal');
     const grid = document.getElementById('light-cert-grid');
 
+    // ADDED: Draggable styling and grip icons for the Modal view
     grid.innerHTML = allCertificates.map(cert => `
-        <div style="cursor: pointer; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" 
-             onclick="window.open('${cert.pdf_url}', '_blank')" 
-             onmouseover="this.style.transform='scale(1.03)'" 
-             onmouseout="this.style.transform='scale(1)'">
-            <img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
+        <div class="modal-cert-item" data-id="${cert.id}" style="cursor: grab; position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border-radius: 4px; padding: 2px; z-index: 5;">
+                <i data-lucide="grip-horizontal" style="width: 16px; height: 16px; color: #6b7280;"></i>
+            </div>
+            <a href="${cert.pdf_url}" target="_blank" style="display: block;">
+                <img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
+            </a>
             <div style="padding: 12px; font-size: 0.85rem; text-align: center; color: #1f2937; font-weight: 500;">${cert.title}</div>
         </div>
     `).join('');
 
     modal.style.display = 'flex';
     lucide.createIcons(); 
+
+    // ADDED: Initialize SortableJS exclusively inside the Modal
+    if (window.modalCertSortable) window.modalCertSortable.destroy();
+    window.modalCertSortable = new Sortable(grid, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        onEnd: async function (evt) {
+            // Update the local array
+            const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
+            allCertificates.splice(evt.newIndex, 0, movedItem);
+            
+            // Save the new numerical order to Supabase
+            for (let i = 0; i < allCertificates.length; i++) {
+                allCertificates[i].display_order = i;
+                await supabaseClient.from('certificates')
+                    .update({ display_order: i })
+                    .eq('id', allCertificates[i].id);
+            }
+            
+            // Silently update the main page behind the modal!
+            renderCertificatesUI(); 
+        }
+    });
 }
 
 function closeAllCertsModal() {
