@@ -11,6 +11,11 @@
     
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
 </head>
 <body style="background-color: #f3f2ef;"> 
     
@@ -104,18 +109,25 @@
                 </button>
             </div>
             <div id="profile-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;">
-                </div>
+            </div>
         </div>
 
         <div class="profile-card">
             <div class="flex-row-between" style="margin-bottom: 15px;">
                 <h2 style="margin: 0;">Certificates</h2>
-                <button class="icon-btn" onclick="alert('PDF Upload functionality coming next!')">
+                <button class="icon-btn" onclick="document.getElementById('cert-upload').click()">
                     <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
                 </button>
+                <input type="file" id="cert-upload" accept="application/pdf" style="display:none;" onchange="uploadCertificate(event)">
             </div>
-            <div id="profile-certificates-container" style="min-height: 34px;">
-                <p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>
+            
+            <div id="profile-certificates-container" style="display: flex; flex-wrap: wrap; gap: 15px; min-height: 34px;">
+                <p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>
+            </div>
+
+            <div id="cert-actions" style="display: none; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; gap: 10px; justify-content: center;">
+                <button id="cert-show-more-btn" class="btn-secondary" onclick="showMoreCertificates()" style="padding: 8px 16px; font-size: 0.9rem; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-weight: 500;">Show more</button>
+                <button id="cert-show-all-btn" class="btn-primary" onclick="openAllCertsModal()" style="padding: 8px 16px; font-size: 0.9rem;">Show all</button>
             </div>
         </div>
     </main>
@@ -160,6 +172,20 @@
                 <button onclick="closeImageEditor()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
                 <button id="save-cropped-btn" onclick="saveCroppedImage()" class="btn-primary" style="display:none; padding: 8px 16px;">Save Image</button>
             </div>
+        </div>
+    </div>
+
+    <div id="all-certs-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #111827;">Certificate Gallery</h3>
+                <button onclick="closeAllCertsModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <div id="light-cert-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
+                </div>
         </div>
     </div>
 
