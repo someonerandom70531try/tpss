@@ -2,10 +2,8 @@
 // 1. INITIALIZATION & SETUP
 // ==========================================
 
-// Initialize Lucide Icons
 lucide.createIcons();
 
-// Supabase Connection
 const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -60,7 +58,6 @@ function toggleAuthMode(event) {
     const msgBox = document.getElementById('auth-message');
 
     if (!signinForm || !signupForm) return;
-
     if (msgBox) msgBox.style.display = 'none';
 
     if (isLoginMode) {
@@ -143,9 +140,8 @@ async function handleSignIn(event) {
     window.location.href = "index.html";
 }
 
-
 // ==========================================
-// 4. UI LOGIC (Dropdowns, Colors & Global Navbar Sync)
+// 4. UI LOGIC (Dropdowns & Colors)
 // ==========================================
 
 function getColorForUsername(username) {
@@ -176,29 +172,24 @@ async function updateUIForUser() {
     const currentUserId = localStorage.getItem('currentUserId');
 
     if (currentUser) {
-        // User IS logged in
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'flex';
         
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
 
-        // Check database for a custom profile picture
         if (currentUserId) {
             const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
 
             if (profile && profile.avatar_url && navAvatarImg) {
-                // Show Image
                 if (avatarInitial) avatarInitial.style.display = 'none';
                 navAvatarImg.src = profile.avatar_url;
                 navAvatarImg.style.display = 'block';
-                
                 if (avatarBtn) {
                     avatarBtn.style.backgroundColor = 'transparent';
                     avatarBtn.style.border = '2px solid #22c55e'; 
                 }
             } else {
-                // Show Fallback Letter
                 if (navAvatarImg) navAvatarImg.style.display = 'none';
                 if (avatarInitial) {
                     avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
@@ -208,7 +199,6 @@ async function updateUIForUser() {
             }
         }
     } else {
-        // User is NOT logged in
         loggedOutUI.style.display = 'block';
         loggedInUI.style.display = 'none';
     }
@@ -234,7 +224,7 @@ function handleLogout() {
 }
 
 // ==========================================
-// 5. PROFILE PAGE LOGIC (account.html)
+// 5. PROFILE PAGE LOGIC 
 // ==========================================
 
 async function loadUserProfile() {
@@ -258,8 +248,7 @@ async function loadUserProfile() {
     }
 
     if (profile) {
-        // --- NEW: Custom placeholder text for empty fields ---
-        document.getElementById('profile-headline').innerText = profile.headline || "Add a professional headline...";
+        document.getElementById('profile-headline').innerText = profile.headline || "";
         document.getElementById('profile-location').innerText = profile.location || "Where are you based?";
         document.getElementById('profile-bio').innerText = profile.bio || "Tell us about yourself...";
         
@@ -283,19 +272,29 @@ async function loadUserProfile() {
         }
 
         const skillsContainer = document.getElementById('profile-skills-container');
-        // --- NEW: Custom placeholder for the skills container ---
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
-            skillsContainer.innerHTML = skillsArray.map(skill => 
-                skill.trim() !== "" ? `<span class="skill-tag">${skill.trim()}</span>` : ""
-            ).join('');
+            skillsContainer.innerHTML = skillsArray.map(skill => {
+                const s = skill.trim();
+                if (s !== "") {
+                    return `
+                    <span class="skill-tag" style="display: flex; align-items: center; gap: 6px;">
+                        ${s}
+                        <i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i>
+                    </span>`;
+                }
+                return "";
+            }).join('');
+            
+            // Re-initialize icons inside the skills list
+            lucide.createIcons(); 
         } else {
             skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Display your skills...</p>`;
         }
     }
 }
 
-// --- CUSTOM TEXT EDIT MODAL LOGIC ---
+// --- PROFILE EDIT LOGIC ---
 function closeModal() {
     const modal = document.getElementById('custom-edit-modal');
     if (modal) modal.style.display = 'none';
@@ -314,6 +313,7 @@ function editProfileField(fieldName, promptMessage) {
 
     title.innerText = promptMessage;
     input.value = ''; 
+    input.placeholder = "Type here...";
     modal.style.display = 'flex';
 
     saveBtn.onclick = async function() {
@@ -334,11 +334,63 @@ function editProfileField(fieldName, promptMessage) {
             }
         } else {
             const { error } = await supabaseClient.from('profiles').update({ [fieldName]: newValue }).eq('user_id', userId);
-            if (!error) {
-                loadUserProfile(); 
-            }
+            if (!error) loadUserProfile(); 
         }
     };
+}
+
+// --- INDIVIDUAL SKILL LOGIC ---
+function addSingleSkill() {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+
+    const modal = document.getElementById('custom-edit-modal');
+    const title = document.getElementById('modal-title');
+    const input = document.getElementById('modal-input');
+    const saveBtn = document.getElementById('modal-save-btn');
+
+    if (!modal) return;
+
+    title.innerText = "Add a new skill";
+    input.value = ''; 
+    input.placeholder = "e.g., Penetration Testing, JavaScript...";
+    modal.style.display = 'flex';
+
+    saveBtn.onclick = async function() {
+        const newSkill = input.value.trim();
+        closeModal();
+
+        if (newSkill === "") return;
+
+        const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
+        let updatedSkills = profile && profile.profile_skills ? profile.profile_skills : "";
+        
+        if (updatedSkills.length > 0) {
+            const currentSkillsArray = updatedSkills.split(',').map(s => s.trim().toLowerCase());
+            if (currentSkillsArray.includes(newSkill.toLowerCase())) return; 
+            updatedSkills += `, ${newSkill}`;
+        } else {
+            updatedSkills = newSkill;
+        }
+
+        const { error } = await supabaseClient.from('profiles').update({ profile_skills: updatedSkills }).eq('user_id', userId);
+        if (!error) loadUserProfile(); 
+    };
+}
+
+async function removeSingleSkill(skillToRemove) {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+
+    const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
+    if (profile && profile.profile_skills) {
+        let skillsArray = profile.profile_skills.split(',').map(s => s.trim());
+        skillsArray = skillsArray.filter(s => s !== skillToRemove && s !== "");
+        const updatedSkills = skillsArray.join(', ');
+        
+        const { error } = await supabaseClient.from('profiles').update({ profile_skills: updatedSkills }).eq('user_id', userId);
+        if (!error) loadUserProfile();
+    }
 }
 
 // ==========================================
@@ -381,7 +433,6 @@ function loadLinkIntoCropper() {
 
 function initCropper(imageUrl) {
     const imageElement = document.getElementById('image-to-crop');
-    
     imageElement.crossOrigin = "anonymous"; 
     imageElement.src = imageUrl;
     
@@ -431,7 +482,7 @@ async function saveCroppedImage() {
 
         closeImageEditor();
         loadUserProfile();
-        updateUIForUser(); // Instantly update the global navbar image too!
+        updateUIForUser(); 
         
         saveBtn.innerText = "Save Image";
         saveBtn.disabled = false;
