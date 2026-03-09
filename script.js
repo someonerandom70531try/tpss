@@ -143,8 +143,25 @@ async function handleSignIn(event) {
 
 
 // ==========================================
-// 4. UI LOGIC (Dropdowns & Session)
+// 4. UI LOGIC (Dropdowns & Color Generator)
 // ==========================================
+
+// --- USERNAME COLOR GENERATOR ---
+function getColorForUsername(username) {
+    const colors = [
+        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
+        '#10b981', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', 
+        '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e'
+    ];
+    
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+        hash = username.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+}
 
 function updateUIForUser() {
     const loggedOutUI = document.getElementById('logged-out-ui');
@@ -161,7 +178,13 @@ function updateUIForUser() {
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'flex';
         
-        if (avatarInitial) avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
+        if (avatarInitial) {
+            avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
+            if (avatarBtn) {
+                avatarBtn.style.backgroundColor = getColorForUsername(currentUser);
+            }
+        }
+        
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
     } else {
@@ -208,6 +231,7 @@ async function loadUserProfile() {
         const initialDiv = document.getElementById('profile-page-initial');
         if (!profile || !profile.avatar_url) {
             initialDiv.innerText = user.username.charAt(0).toUpperCase();
+            initialDiv.style.backgroundColor = getColorForUsername(user.username);
             initialDiv.style.display = 'flex';
         }
     }
@@ -274,7 +298,7 @@ function editProfileField(fieldName, promptMessage) {
         closeModal();
 
         if (newValue === "" && fieldName === 'username') {
-            console.error("Username cannot be empty");
+            showAuthMessage("Username cannot be empty"); 
             return; 
         }
 
