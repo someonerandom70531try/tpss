@@ -2,8 +2,10 @@
 // 1. INITIALIZATION & SETUP
 // ==========================================
 
+// Initialize Lucide Icons
 lucide.createIcons();
 
+// Supabase Connection
 const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -143,51 +145,70 @@ async function handleSignIn(event) {
 
 
 // ==========================================
-// 4. UI LOGIC (Dropdowns & Color Generator)
+// 4. UI LOGIC (Dropdowns, Colors & Global Navbar Sync)
 // ==========================================
 
-// --- USERNAME COLOR GENERATOR ---
 function getColorForUsername(username) {
     const colors = [
         '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
         '#10b981', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', 
         '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e'
     ];
-    
     let hash = 0;
     for (let i = 0; i < username.length; i++) {
         hash = username.charCodeAt(i) + ((hash << 5) - hash);
     }
-    
     const index = Math.abs(hash) % colors.length;
     return colors[index];
 }
 
-function updateUIForUser() {
+async function updateUIForUser() {
     const loggedOutUI = document.getElementById('logged-out-ui');
     const loggedInUI = document.getElementById('logged-in-ui');
     const avatarBtn = document.getElementById('user-avatar-btn');
     const avatarInitial = document.getElementById('avatar-initial');
     const dropdownUsername = document.getElementById('dropdown-username');
+    const navAvatarImg = document.getElementById('nav-avatar-img');
 
     if (!loggedOutUI || !loggedInUI) return;
 
     const currentUser = localStorage.getItem('currentUser');
+    const currentUserId = localStorage.getItem('currentUserId');
 
     if (currentUser) {
+        // User IS logged in
         loggedOutUI.style.display = 'none';
         loggedInUI.style.display = 'flex';
         
-        if (avatarInitial) {
-            avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
-            if (avatarBtn) {
-                avatarBtn.style.backgroundColor = getColorForUsername(currentUser);
-            }
-        }
-        
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
+
+        // Check database for a custom profile picture
+        if (currentUserId) {
+            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
+
+            if (profile && profile.avatar_url && navAvatarImg) {
+                // Show Image
+                if (avatarInitial) avatarInitial.style.display = 'none';
+                navAvatarImg.src = profile.avatar_url;
+                navAvatarImg.style.display = 'block';
+                
+                if (avatarBtn) {
+                    avatarBtn.style.backgroundColor = 'transparent';
+                    avatarBtn.style.border = '2px solid #22c55e'; 
+                }
+            } else {
+                // Show Fallback Letter
+                if (navAvatarImg) navAvatarImg.style.display = 'none';
+                if (avatarInitial) {
+                    avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
+                    avatarInitial.style.display = 'block';
+                    if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser);
+                }
+            }
+        }
     } else {
+        // User is NOT logged in
         loggedOutUI.style.display = 'block';
         loggedInUI.style.display = 'none';
     }
@@ -213,7 +234,7 @@ function handleLogout() {
 }
 
 // ==========================================
-// 5. PROFILE PAGE LOGIC
+// 5. PROFILE PAGE LOGIC (account.html)
 // ==========================================
 
 async function loadUserProfile() {
@@ -272,7 +293,7 @@ async function loadUserProfile() {
     }
 }
 
-// --- CUSTOM MODAL LOGIC ---
+// --- CUSTOM TEXT EDIT MODAL LOGIC ---
 function closeModal() {
     const modal = document.getElementById('custom-edit-modal');
     if (modal) modal.style.display = 'none';
@@ -298,7 +319,7 @@ function editProfileField(fieldName, promptMessage) {
         closeModal();
 
         if (newValue === "" && fieldName === 'username') {
-            showAuthMessage("Username cannot be empty"); 
+            alert("Username cannot be empty"); 
             return; 
         }
 
@@ -319,16 +340,15 @@ function editProfileField(fieldName, promptMessage) {
 }
 
 // ==========================================
-// IMAGE UPLOAD & CROP LOGIC
+// 6. IMAGE UPLOAD & CROP LOGIC
 // ==========================================
 
 let cropper = null;
-let currentImageField = ''; // Keeps track of if we are editing avatar_url or banner_url
+let currentImageField = ''; 
 
 function openImageEditor(fieldName) {
     currentImageField = fieldName;
     
-    // Set up the modal UI for a fresh start
     document.getElementById('image-modal-title').innerText = fieldName === 'avatar_url' ? 'Update Profile Picture' : 'Update Banner';
     document.getElementById('image-editor-modal').style.display = 'flex';
     document.getElementById('image-source-options').style.display = 'block';
@@ -336,7 +356,6 @@ function openImageEditor(fieldName) {
     document.getElementById('save-cropped-btn').style.display = 'none';
     document.getElementById('link-upload-input').value = '';
     
-    // Destroy any old cropper instance if it exists
     if(cropper) { cropper.destroy(); cropper = null; }
 }
 
@@ -345,51 +364,41 @@ function closeImageEditor() {
     if(cropper) { cropper.destroy(); cropper = null; }
 }
 
-// Handles when a user picks a file from their computer/phone
 function loadFileIntoCropper(event) {
     const file = event.target.files[0];
     if(!file) return;
-    
-    // Create a temporary local URL for the image so Cropper can see it
     const url = URL.createObjectURL(file);
     initCropper(url);
 }
 
-// Handles when a user pastes a link
 function loadLinkIntoCropper() {
     const url = document.getElementById('link-upload-input').value.trim();
     if(!url) return;
     initCropper(url);
 }
 
-// Starts the Cropper.js engine
 function initCropper(imageUrl) {
     const imageElement = document.getElementById('image-to-crop');
     
-    // Add crossOrigin to prevent security errors when cropping external links
     imageElement.crossOrigin = "anonymous"; 
     imageElement.src = imageUrl;
     
-    // Swap the UI to show the cropping area
     document.getElementById('image-source-options').style.display = 'none';
     document.getElementById('cropper-container').style.display = 'block';
     document.getElementById('save-cropped-btn').style.display = 'block';
 
-    // Set the crop box shape based on what we are editing
-    // Avatar = 1:1 (Square), Banner = 4:1 (Wide Rectangle)
     const ratio = currentImageField === 'avatar_url' ? 1 / 1 : 4 / 1;
 
     if(cropper) cropper.destroy();
     cropper = new Cropper(imageElement, {
         aspectRatio: ratio,
-        viewMode: 1, // Restricts crop box to not exceed the canvas
+        viewMode: 1, 
         background: false,
         zoomable: true,
-        dragMode: 'move' // Makes it feel like dragging on Google/LinkedIn
+        dragMode: 'move'
     });
 }
 
-// Cuts the image, uploads it to Supabase Storage, and saves the link
 async function saveCroppedImage() {
     if(!cropper) return;
     
@@ -397,14 +406,10 @@ async function saveCroppedImage() {
     saveBtn.innerText = "Uploading...";
     saveBtn.disabled = true;
 
-    // 1. Get the final cropped image as a digital file (Blob)
     cropper.getCroppedCanvas().toBlob(async (blob) => {
         const userId = localStorage.getItem('currentUserId');
-        
-        // Give the file a unique name based on time
         const fileName = `${userId}_${currentImageField}_${Date.now()}.jpg`;
 
-        // 2. Upload the file to our new 'images' bucket in Supabase
         const { error: uploadError } = await supabaseClient.storage
             .from('images')
             .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
@@ -417,16 +422,14 @@ async function saveCroppedImage() {
             return;
         }
 
-        // 3. Ask Supabase for the public web address of the file we just uploaded
         const { data: urlData } = supabaseClient.storage.from('images').getPublicUrl(fileName);
         const finalUrl = urlData.publicUrl;
 
-        // 4. Save that URL to the user's profile in the database
         await supabaseClient.from('profiles').update({ [currentImageField]: finalUrl }).eq('user_id', userId);
 
-        // 5. Clean up the UI and reload the page with the new image!
         closeImageEditor();
         loadUserProfile();
+        updateUIForUser(); // Instantly update the global navbar image too!
         
         saveBtn.innerText = "Save Image";
         saveBtn.disabled = false;
@@ -434,7 +437,7 @@ async function saveCroppedImage() {
 }
 
 // ==========================================
-// 6. RUN ON PAGE LOAD
+// 7. RUN ON PAGE LOAD
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
