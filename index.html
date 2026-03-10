@@ -18,32 +18,22 @@
             </div>
             <div class="nav-actions">
                 <div id="auth-container" style="position: relative;">
-                    
-                    <div id="logged-out-ui">
-                        <a href="auth.html" class="btn-primary">Sign In</a>
-                    </div>
-
+                    <div id="logged-out-ui"><a href="auth.html" class="btn-primary">Sign In</a></div>
                     <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
                         
                         <div style="position: relative;">
                             <button class="icon-btn" onclick="toggleConnectionsDropdown(event)" title="My Network" style="padding: 6px;">
                                 <i data-lucide="users" style="width: 22px; height: 22px; color: #4b5563;"></i>
                             </button>
-                            
                             <div id="connections-dropdown" class="dropdown-menu" style="width: 280px; right: -10px; top: 45px; padding: 15px; cursor: default;">
                                 <input type="text" id="connection-search" placeholder="Search users by name..." class="modal-input" style="margin-top: 0; padding: 8px 12px; font-size: 0.9rem;" oninput="searchUsers(event)">
-                                
                                 <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">
-                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
-                                        My Connections
-                                    </button>
+                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">My Connections</button>
                                     <button onclick="openRequestsModal()" style="background: none; border: none; color: #8b5cf6; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
                                         Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
                                     </button>
                                 </div>
-
-                                <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;">
-                                    </div>
+                                <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;"></div>
                             </div>
                         </div>
 
@@ -52,19 +42,14 @@
                                 <span id="avatar-initial"></span>
                                 <img id="nav-avatar-img" src="" style="display: none; width: 100%; height: 100%; object-fit: cover;" alt="User">
                             </button>
-                            
                             <div id="user-dropdown" class="dropdown-menu">
                                 <div class="dropdown-header">
                                     <p id="dropdown-username" style="font-weight: 600; margin: 0; color: #1f2937;">Username</p>
                                     <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
                                 </div>
                                 <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
-                                <a href="account.html" class="dropdown-item">
-                                    <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
-                                </a>
-                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
-                                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
-                                </button>
+                                <a href="account.html" class="dropdown-item"><i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account</a>
+                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout</button>
                             </div>
                         </div>
                     </div>
@@ -78,7 +63,6 @@
             <span class="badge-hero">Community Powered</span>
             <h1>Exchange Skills, <span class="text-gradient">No Money Needed.</span></h1>
             <p>Connect with experts in your community. Teach what you love and master a new craft through direct exchange.</p>
-            
             <div class="search-box">
                 <i data-lucide="search"></i>
                 <input type="text" placeholder="Search skills like 'Piano' or 'React'...">
@@ -90,45 +74,63 @@
     <main class="main-content" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
         <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Explore Skills</h2>
-            <button class="btn-outline" onclick="openPostSkillModal()">+ Post a Skill</button>
+            <button class="btn-outline" onclick="checkWantedSkillsBeforePosting()">+ Post a Skill</button>
         </div>
-        
-        <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
-            </div>
+        <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
     </main>
+
+    <div id="warning-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px; width: 95%; text-align: center;">
+            <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+                <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: #f59e0b;"></i>
+            </div>
+            <h3 style="margin: 0 0 10px 0; color: #111827;">What do you want to learn?</h3>
+            <p style="color: #4b5563; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.5;">You haven't listed any skills in your "Skills I Want" section! Skill swapping works best when people know what you are looking for in return.</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button onclick="closeWarningModal()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
+                <button onclick="continueToPostSkill()" class="btn-primary" style="padding: 8px 16px;">Post Anyway</button>
+            </div>
+        </div>
+    </div>
 
     <div id="post-skill-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 500px; width: 95%;">
             <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #111827;">Post a Skill to Exchange</h3>
-                <button onclick="closePostSkillModal()" class="icon-btn" style="color: #6b7280;">
-                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
-                </button>
+                <button onclick="closePostSkillModal()" class="icon-btn" style="color: #6b7280;"><i data-lucide="x" style="width: 24px; height: 24px;"></i></button>
             </div>
-            
             <div style="text-align: left; margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Skill Name</label>
                 <input type="text" id="post-skill-name" class="modal-input" placeholder="e.g. React & TypeScript" style="margin-top: 0;">
             </div>
-            
             <div style="text-align: left; margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Category Tag</label>
                 <input type="text" id="post-skill-tag" class="modal-input" placeholder="e.g. Programming, Arts, Cooking" style="margin-top: 0;">
             </div>
-
             <div style="text-align: left; margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Description</label>
                 <textarea id="post-skill-desc" class="modal-input" rows="3" placeholder="Describe what you will teach..." style="margin-top: 0;"></textarea>
             </div>
-
             <div style="text-align: left; margin-bottom: 25px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Attach a Certificate (Optional)</label>
                 <select id="post-skill-cert" class="modal-input" style="margin-top: 0; background: white; cursor: pointer;">
                     <option value="">-- No certificate attached --</option>
-                    </select>
+                </select>
             </div>
-
             <button onclick="submitPostSkill()" class="btn-primary" style="width: 100%;">Post Skill</button>
+        </div>
+    </div>
+
+    <div id="skill-detail-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827;">Skill Details</h3>
+                <button onclick="closeSkillDetailModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="skill-detail-content" style="max-height: 75vh; overflow-y: auto; padding-right: 5px;">
+                </div>
         </div>
     </div>
 
@@ -136,25 +138,18 @@
         <div class="modal-content" style="max-width: 450px; width: 95%;">
             <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #111827;">Incoming Requests</h3>
-                <button onclick="closeRequestsModal()" class="icon-btn" style="color: #6b7280;">
-                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
-                </button>
+                <button onclick="closeRequestsModal()" class="icon-btn" style="color: #6b7280;"><i data-lucide="x" style="width: 24px; height: 24px;"></i></button>
             </div>
-            <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;">
-                </div>
+            <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;"></div>
         </div>
     </div>
-
     <div id="manage-connections-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
             <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #111827;">Manage Connections</h3>
-                <button onclick="closeManageConnectionsModal()" class="icon-btn" style="color: #6b7280;">
-                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
-                </button>
+                <button onclick="closeManageConnectionsModal()" class="icon-btn" style="color: #6b7280;"><i data-lucide="x" style="width: 24px; height: 24px;"></i></button>
             </div>
-            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;">
-                </div>
+            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;"></div>
         </div>
     </div>
 
