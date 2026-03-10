@@ -979,7 +979,11 @@ function openAllCertsModal() {
     if (!isPublicView) {
         if (window.modalCertSortable) window.modalCertSortable.destroy();
         window.modalCertSortable = new Sortable(grid, {
-            animation: 150, ghostClass: 'sortable-ghost',
+            animation: 150, 
+            ghostClass: 'sortable-ghost',
+            // NEW: These two lines fix the modal drag bug!
+            forceFallback: true,      
+            fallbackOnBody: true,     
             onEnd: async function (evt) {
                 const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
                 allCertificates.splice(evt.newIndex, 0, movedItem);
