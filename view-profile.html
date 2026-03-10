@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Profile | Skill Swap</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body style="background-color: #f3f2ef;"> 
+    
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i data-lucide="sparkles" class="primary-icon"></i>
+                <a href="index.html" style="text-decoration: none; color: inherit;"><span>SkillSwap</span></a>
+            </div>
+            <div class="nav-actions">
+                <div id="auth-container" style="position: relative;">
+                    <div id="logged-out-ui">
+                        <a href="auth.html" class="btn-primary">Sign In</a>
+                    </div>
+                    
+                    <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
+                        
+                        <div style="position: relative;">
+                            <button class="icon-btn" onclick="toggleConnectionsDropdown(event)" title="My Network" style="padding: 6px;">
+                                <i data-lucide="users" style="width: 22px; height: 22px; color: #4b5563;"></i>
+                            </button>
+                            <div id="connections-dropdown" class="dropdown-menu" style="width: 280px; right: -10px; top: 45px; padding: 15px; cursor: default;">
+                                <input type="text" id="connection-search" placeholder="Search users by name..." class="modal-input" style="margin-top: 0; padding: 8px 12px; font-size: 0.9rem;" oninput="searchUsers(event)">
+                                
+                                <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">
+                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        My Connections
+                                    </button>
+                                    <button onclick="openRequestsModal()" style="background: none; border: none; color: #8b5cf6; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
+                                    </button>
+                                </div>
+                                <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+
+                        <div style="position: relative;">
+                            <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)" style="overflow: hidden; padding: 0;">
+                                <span id="avatar-initial"></span>
+                                <img id="nav-avatar-img" src="" style="display: none; width: 100%; height: 100%; object-fit: cover;" alt="User">
+                            </button>
+                            <div id="user-dropdown" class="dropdown-menu">
+                                <div class="dropdown-header">
+                                    <p id="dropdown-username" style="font-weight: 600; margin: 0; color: #1f2937;">Username</p>
+                                    <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
+                                </div>
+                                <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
+                                <a href="account.html" class="dropdown-item">
+                                    <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
+                                </a>
+                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
+                                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="profile-container">
+        
+        <div class="profile-card" style="padding: 0;">
+            <div class="profile-banner">
+                <img id="public-banner-img" src="" alt="Banner Background" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <div class="profile-info-section">
+                <div class="profile-avatar-wrapper" style="cursor: default;">
+                    <div class="profile-avatar-large" id="public-page-initial"></div>
+                    <img id="public-avatar-img" style="display: none; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" src="" alt="Avatar">
+                </div>
+                <div class="profile-text">
+                    <div class="flex-row-between">
+                        <h1 id="public-page-name">Loading...</h1>
+                    </div>
+                    <p class="profile-headline" id="public-headline" style="min-height: 24px; margin: 5px 0; color: #1f2937;"></p>
+                    <p class="profile-location" id="public-location" style="min-height: 20px; margin: 0; color: #6b7280; font-size: 0.9rem;"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="profile-card">
+            <h2 style="margin: 0 0 10px 0;">About</h2>
+            <p id="public-bio" style="color: #4b5563; line-height: 1.6; white-space: pre-wrap; margin: 0;">No bio provided.</p>
+        </div>
+
+        <div class="profile-card">
+            <h2 style="margin: 0 0 15px 0;">Skills</h2>
+            <div id="public-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+        </div>
+
+        <div class="profile-card">
+            <h2 style="margin: 0 0 15px 0;">Certificates</h2>
+            <div id="public-certificates-container" style="display: flex; flex-direction: column; gap: 15px;"></div>
+            
+            <div id="public-cert-actions" style="display: none; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; gap: 10px; justify-content: center;">
+                <button id="public-show-more-btn" class="btn-secondary" onclick="showMorePublicCertificates()" style="padding: 8px 16px; font-size: 0.9rem; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-weight: 500;">Show more</button>
+                <button id="public-show-all-btn" class="btn-primary" onclick="openAllCertsModal()" style="padding: 8px 16px; font-size: 0.9rem;">Show all</button>
+            </div>
+        </div>
+    </main>
+
+    <div id="all-certs-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #111827;">Certificate Gallery</h3>
+                <button onclick="closeAllCertsModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="light-cert-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;"></div>
+        </div>
+    </div>
+
+    <div id="requests-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 450px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827;">Incoming Requests</h3>
+                <button onclick="closeRequestsModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <div id="manage-connections-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 450px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827;">Manage Connections</h3>
+                <button onclick="closeManageConnectionsModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
