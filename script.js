@@ -7,7 +7,6 @@ const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Helper function to render Profile Pic or Initial
 function getAvatarHtml(user) {
     let url = null;
     if (user.profiles) {
@@ -31,6 +30,8 @@ async function loadSkills() {
     const grid = document.getElementById('skills-grid');
     if (!grid) return; 
 
+    const currentUserId = localStorage.getItem('currentUserId');
+
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
@@ -38,26 +39,35 @@ async function loadSkills() {
         return;
     }
 
-    // Fetch authors to display avatars and names
     const userIds = [...new Set(rawSkills.map(s => s.user_id))];
     const { data: users } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url)').in('id', userIds);
 
     const userMap = {};
     if (users) users.forEach(u => userMap[u.id] = u);
 
-    // Render cards matching your screenshot design
     grid.innerHTML = rawSkills.map(skill => {
         const u = userMap[skill.user_id] || { username: 'Unknown' };
-        
-        // Truncate description so cards stay uniform height
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
+        
+        // Check if the logged-in user owns this post
+        const isOwner = skill.user_id == currentUserId;
 
         return `
         <div style="border: 1px solid #e5e7eb; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" onclick="window.location.href='view-profile.html?id=${u.id}'">
             <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <span style="font-size:0.75rem; font-weight: 600; color:#8b5cf6; background:#f5f3ff; padding:4px 10px; border-radius:6px;">${skill.category}</span>
-                    <i data-lucide="more-horizontal" style="width: 20px; height: 20px; color: #9ca3af;"></i>
+                    
+                    <div style="position: relative;">
+                        <button onclick="togglePostMenu(event, ${skill.id})" class="icon-btn" style="padding: 4px; margin: -4px;">
+                            <i data-lucide="more-horizontal" style="width: 20px; height: 20px; color: #9ca3af;"></i>
+                        </button>
+                        <div id="post-menu-${skill.id}" class="post-options-menu dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; width: 140px; padding: 5px; z-index: 20; cursor: default; margin-top: 5px;">
+                            ${isOwner ? `<button onclick="deletePost(event, ${skill.id})" style="width: 100%; text-align: left; color: #ef4444; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#fee2e2'" onmouseout="this.style.backgroundColor='transparent'">Remove Post</button>` : ''}
+                            <button onclick="reportPost(event, ${skill.id})" style="width: 100%; text-align: left; color: #4b5563; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">Report</button>
+                        </div>
+                    </div>
+
                 </div>
                 <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: #111827;">${skill.title}</h3>
                 <p style="color: #4b5563; font-size: 0.9rem; line-height: 1.5; margin: 0 0 20px 0;">${shortDesc}</p>
@@ -76,27 +86,42 @@ async function loadSkills() {
     lucide.createIcons();
 }
 
-// --- NEW: POST A SKILL MODAL LOGIC ---
+// --- NEW: FEED POST ACTIONS ---
+window.togglePostMenu = function(event, postId) {
+    event.stopPropagation(); // Prevents the card click from routing to the profile
+    const menus = document.querySelectorAll('.post-options-menu');
+    menus.forEach(m => { if (m.id !== `post-menu-${postId}`) m.style.display = 'none'; });
+    const menu = document.getElementById(`post-menu-${postId}`);
+    if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+
+window.deletePost = async function(event, postId) {
+    event.stopPropagation(); // Stop routing
+    await supabaseClient.from('skills').delete().eq('id', postId);
+    loadSkills(); // Refresh feed
+    // If the user happens to delete this from a page that has their profile loaded, update it
+    if (document.getElementById('profile-page-name')) loadUserProfile();
+}
+
+window.reportPost = function(event, postId) {
+    event.stopPropagation(); // Stop routing
+    console.log("Post reported. ID:", postId);
+    document.getElementById(`post-menu-${postId}`).style.display = 'none';
+}
+
+
 async function openPostSkillModal() {
     const currentUserId = localStorage.getItem('currentUserId');
-    if (!currentUserId) {
-        window.location.href = "auth.html";
-        return;
-    }
+    if (!currentUserId) { window.location.href = "auth.html"; return; }
 
     const certSelect = document.getElementById('post-skill-cert');
     certSelect.innerHTML = '<option value="">Loading your certificates...</option>';
     document.getElementById('post-skill-modal').style.display = 'flex';
 
-    // Fetch user's certificates to populate the dropdown
     const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
     
     certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
-    if (certs) {
-        certs.forEach(cert => {
-            certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`;
-        });
-    }
+    if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
 
     document.getElementById('post-skill-name').value = '';
     document.getElementById('post-skill-tag').value = '';
@@ -112,20 +137,17 @@ async function submitPostSkill() {
     const desc = document.getElementById('post-skill-desc').value.trim();
     const certId = document.getElementById('post-skill-cert').value;
 
-    if (!name || !tag || !desc) return; // Silent fail if fields empty
+    if (!name || !tag || !desc) return; 
 
-    // 1. Create the public post in the skills table
     const payload = { user_id: userId, title: name, category: tag, description: desc };
     if (certId) payload.certificate_id = certId;
     await supabaseClient.from('skills').insert([payload]);
 
-    // 2. Cross-reference with 'Skills I Have' (profile_skills)
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
     
     const exists = currentSkills.some(s => s.toLowerCase() === name.toLowerCase());
 
-    // 3. If it doesn't exist, push it to the top of their list automatically
     if (!exists) {
         currentSkills.unshift(name);
         const updatedStr = currentSkills.filter(s => s !== "").join(', ');
@@ -138,7 +160,7 @@ async function submitPostSkill() {
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC
+// 3. AUTHENTICATION LOGIC (SINGLE FORM)
 // ==========================================
 let isLoginMode = true;
 
@@ -278,6 +300,9 @@ window.onclick = function(event) {
     const connDropdown = document.getElementById('connections-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
     if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown')) connDropdown.classList.remove('show');
+    
+    // NEW: Close any open post menus when clicking outside
+    document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
 }
 
 function handleLogout() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUser'); window.location.href = "index.html"; }
@@ -477,7 +502,7 @@ async function loadUserProfile() {
         if (profile.avatar_url) { document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
         } else { imgElement.style.display = 'none'; }
 
-        // --- NEW: Identify which skills are active posts so we can turn them green ---
+        // --- NEW: Identify active posts to turn matching skills green and remove 'X' ---
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId);
         const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
@@ -491,9 +516,11 @@ async function loadUserProfile() {
                     // Check if this skill is in the active posts array
                     const isActive = activeSkillNames.includes(s.toLowerCase());
                     const bgStyle = isActive ? "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;" : "";
-                    const iconColor = isActive ? "#10b981" : "#9ca3af";
                     
-                    return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; ${bgStyle}">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: ${iconColor};" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i></span>`;
+                    // UPDATED: Completely remove the "X" button if the skill is currently posted on the feed
+                    const removeBtn = isActive ? "" : `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i>`;
+                    
+                    return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; ${bgStyle}">${s}${removeBtn}</span>`;
                 }
                 return "";
             }).join('');
@@ -659,7 +686,6 @@ async function loadPublicProfile() {
         if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } 
         else { imgElement.style.display = 'none'; }
 
-        // --- Identify active posts for public view to turn green ---
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId);
         const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
