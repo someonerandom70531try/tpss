@@ -252,3 +252,21 @@ body {
     text-align: center;
     color: #cccccc;
 }
+
+/* ==========================================
+   CONNECTIONS DROPDOWN STYLES
+   ========================================== */
+.connection-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+.connection-item:last-child { border-bottom: none; }
+.connection-user-info { display: flex; align-items: center; gap: 10px; }
+.connection-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    color: white; display: flex; align-items: center;
+    justify-content: center; font-size: 0.8rem; font-weight: bold;
+}
