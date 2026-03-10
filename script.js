@@ -62,7 +62,7 @@ function toggleAuthMode(event) {
 
     if (isLoginMode) {
         signinForm.style.display = 'block';
-        signupForm.style.display = 'none';
+        signinForm.style.display = 'none';
         authTitle.innerText = 'Welcome Back';
         authSubtitle.innerText = 'Enter your details to sign in';
         toggleText.innerText = "Don't have an account?";
@@ -141,7 +141,7 @@ async function handleSignIn(event) {
 }
 
 // ==========================================
-// 4. UI LOGIC (Dropdowns & Colors)
+// 4. UI LOGIC & NAVBAR DROPDOWNS
 // ==========================================
 
 function getColorForUsername(username) {
@@ -206,14 +206,36 @@ async function updateUIForUser() {
 
 function toggleDropdown(event) {
     event.stopPropagation(); 
-    const dropdown = document.getElementById('user-dropdown');
-    if (dropdown) dropdown.classList.toggle('show');
+    const userDropdown = document.getElementById('user-dropdown');
+    const connDropdown = document.getElementById('connections-dropdown');
+    
+    if (connDropdown) connDropdown.classList.remove('show'); 
+    if (userDropdown) userDropdown.classList.toggle('show');
+}
+
+function toggleConnectionsDropdown(event) {
+    event.stopPropagation(); 
+    const userDropdown = document.getElementById('user-dropdown');
+    const connDropdown = document.getElementById('connections-dropdown');
+    
+    if (userDropdown) userDropdown.classList.remove('show'); 
+    if (connDropdown) {
+        connDropdown.classList.toggle('show');
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
+            loadTopConnections();
+        }
+    }
 }
 
 window.onclick = function(event) {
-    const dropdown = document.getElementById('user-dropdown');
-    if (dropdown && dropdown.classList.contains('show')) {
-        dropdown.classList.remove('show');
+    const userDropdown = document.getElementById('user-dropdown');
+    const connDropdown = document.getElementById('connections-dropdown');
+    
+    if (userDropdown && userDropdown.classList.contains('show')) {
+        userDropdown.classList.remove('show');
+    }
+    if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown')) {
+        connDropdown.classList.remove('show');
     }
 }
 
@@ -224,7 +246,108 @@ function handleLogout() {
 }
 
 // ==========================================
-// 5. PROFILE PAGE LOGIC 
+// 5. CONNECTIONS & SEARCH SYSTEM
+// ==========================================
+
+async function searchUsers(event) {
+    const query = event.target.value.trim();
+    const list = document.getElementById('connections-list');
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    if (!query) {
+        loadTopConnections();
+        return;
+    }
+
+    list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
+
+    const { data: users, error } = await supabaseClient
+        .from('app_users')
+        .select('id, username')
+        .ilike('username', `${query}%`) 
+        .neq('id', currentUserId)
+        .order('username', { ascending: true })
+        .limit(5);
+
+    if (error || !users || users.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">No users found.</p>`;
+        return;
+    }
+
+    renderConnectionList(users, "Search Results");
+}
+
+async function loadTopConnections() {
+    const list = document.getElementById('connections-list');
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Loading connections...</p>`;
+
+    const { data: connections, error } = await supabaseClient
+        .from('connections')
+        .select('requester_id, receiver_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+        .limit(3);
+
+    if (error || !connections || connections.length === 0) {
+        list.innerHTML = `
+            <p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">Connections</p>
+            <p style="text-align:center; font-size:0.85rem; color:#9ca3af; margin: 0;">No connections yet. Search to find people!</p>
+        `;
+        return;
+    }
+
+    const connectedUserIds = connections.map(conn => 
+        conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id
+    );
+
+    const { data: users } = await supabaseClient
+        .from('app_users')
+        .select('id, username')
+        .in('id', connectedUserIds);
+
+    renderConnectionList(users || [], "Frequent Connections");
+}
+
+function renderConnectionList(users, title) {
+    const list = document.getElementById('connections-list');
+    
+    let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
+    
+    html += users.map(u => `
+        <div class="connection-item">
+            <div class="connection-user-info">
+                <div class="connection-avatar" style="background-color: ${getColorForUsername(u.username)}">${u.username.charAt(0).toUpperCase()}</div>
+                <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${u.username}</span>
+            </div>
+            <button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>
+        </div>
+    `).join('');
+
+    list.innerHTML = html;
+}
+
+async function connectWithUser(receiverId) {
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    const { error } = await supabaseClient.from('connections').insert([{
+        requester_id: currentUserId,
+        receiver_id: receiverId,
+        status: 'accepted'
+    }]);
+
+    if (error) {
+        alert("You are already connected with this user!");
+    } else {
+        document.getElementById('connection-search').value = '';
+        loadTopConnections(); 
+    }
+}
+
+
+// ==========================================
+// 6. PROFILE PAGE LOGIC 
 // ==========================================
 
 async function loadUserProfile() {
@@ -274,8 +397,6 @@ async function loadUserProfile() {
         const skillsContainer = document.getElementById('profile-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
-            
-            // SKILLS are still draggable
             skillsContainer.innerHTML = skillsArray.map(skill => {
                 const s = skill.trim();
                 if (s !== "") {
@@ -405,7 +526,7 @@ async function removeSingleSkill(skillToRemove) {
 }
 
 // ==========================================
-// 6. IMAGE UPLOAD & CROP LOGIC
+// 7. IMAGE UPLOAD & CROP LOGIC
 // ==========================================
 
 let cropper = null;
@@ -537,7 +658,6 @@ function renderCertificatesUI() {
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
     
-    // REMOVED: cursor: grab and Sortable logic from this main page container
     container.innerHTML = visibleCerts.map(cert => `
         <div class="cert-card-wrapper" data-id="${cert.id}" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <div class="cert-actions-overlay" style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;">
@@ -695,7 +815,6 @@ function openAllCertsModal() {
     const modal = document.getElementById('all-certs-modal');
     const grid = document.getElementById('light-cert-grid');
 
-    // ADDED: Draggable styling and grip icons for the Modal view
     grid.innerHTML = allCertificates.map(cert => `
         <div class="modal-cert-item" data-id="${cert.id}" style="cursor: grab; position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <div style="position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border-radius: 4px; padding: 2px; z-index: 5;">
@@ -711,17 +830,14 @@ function openAllCertsModal() {
     modal.style.display = 'flex';
     lucide.createIcons(); 
 
-    // ADDED: Initialize SortableJS exclusively inside the Modal
     if (window.modalCertSortable) window.modalCertSortable.destroy();
     window.modalCertSortable = new Sortable(grid, {
         animation: 150,
         ghostClass: 'sortable-ghost',
         onEnd: async function (evt) {
-            // Update the local array
             const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
             allCertificates.splice(evt.newIndex, 0, movedItem);
             
-            // Save the new numerical order to Supabase
             for (let i = 0; i < allCertificates.length; i++) {
                 allCertificates[i].display_order = i;
                 await supabaseClient.from('certificates')
@@ -729,7 +845,6 @@ function openAllCertsModal() {
                     .eq('id', allCertificates[i].id);
             }
             
-            // Silently update the main page behind the modal!
             renderCertificatesUI(); 
         }
     });
