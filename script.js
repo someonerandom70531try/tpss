@@ -276,7 +276,6 @@ async function searchUsers(event) {
 
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
 
-    // 1. Fetch matching users
     const { data: users, error } = await supabaseClient
         .from('app_users')
         .select('id, username')
@@ -290,20 +289,26 @@ async function searchUsers(event) {
         return;
     }
 
-    // 2. Fetch current user's connections to see who they already know
+    // Fetch all connections to know their current status
     const { data: myConnections } = await supabaseClient
         .from('connections')
-        .select('requester_id, receiver_id')
-        .eq('status', 'accepted')
+        .select('requester_id, receiver_id, status')
         .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
 
-    // Map them into a simple array of IDs
-    const connectedIds = (myConnections || []).map(conn => 
-        conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id
-    );
+    // Map the connection status securely
+    const connectionMap = {};
+    if (myConnections) {
+        myConnections.forEach(conn => {
+            const otherId = conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id;
+            if (conn.status === 'accepted') {
+                connectionMap[otherId] = 'accepted';
+            } else if (conn.status === 'pending') {
+                connectionMap[otherId] = conn.requester_id == currentUserId ? 'pending_sent' : 'pending_received';
+            }
+        });
+    }
 
-    // 3. Render the list, passing in the known connections
-    renderConnectionList(users, "Search Results", connectedIds);
+    renderConnectionList(users, "Search Results", connectionMap);
 }
 
 async function loadTopConnections() {
@@ -312,6 +317,7 @@ async function loadTopConnections() {
     
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Loading connections...</p>`;
 
+    // Only show ACCEPTED connections on the main list
     const { data: connections, error } = await supabaseClient
         .from('connections')
         .select('requester_id, receiver_id')
@@ -327,32 +333,34 @@ async function loadTopConnections() {
         return;
     }
 
-    const connectedUserIds = connections.map(conn => 
-        conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id
-    );
+    const connectedUserIds = connections.map(conn => conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id);
 
-    const { data: users } = await supabaseClient
-        .from('app_users')
-        .select('id, username')
-        .in('id', connectedUserIds);
+    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', connectedUserIds);
 
-    // Pass the IDs so the UI knows they are already connected
-    renderConnectionList(users || [], "Frequent Connections", connectedUserIds);
+    // Build a mock map where everyone is 'accepted' for the top list
+    const connectionMap = {};
+    connectedUserIds.forEach(id => connectionMap[id] = 'accepted');
+
+    renderConnectionList(users || [], "Frequent Connections", connectionMap);
 }
 
-function renderConnectionList(users, title, connectedIds = []) {
+function renderConnectionList(users, title, connectionMap = {}) {
     const list = document.getElementById('connections-list');
-    
     let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
     
     html += users.map(u => {
-        // Check if this specific user ID is in our array of connected friends
-        const isConnected = connectedIds.includes(u.id);
-        
-        // Dynamically choose to show a button OR a clean text label
-        const actionHtml = isConnected 
-            ? `<span style="font-size: 0.75rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Connected</span>`
-            : `<button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>`;
+        const status = connectionMap[u.id];
+        let actionHtml = '';
+
+        if (status === 'accepted') {
+            actionHtml = `<span style="font-size: 0.75rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Connected</span>`;
+        } else if (status === 'pending_sent') {
+            actionHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-weight: 500; background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">Requested</span>`;
+        } else if (status === 'pending_received') {
+            actionHtml = `<button onclick="openRequestsModal()" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Review</button>`;
+        } else {
+            actionHtml = `<button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>`;
+        }
 
         return `
             <div class="connection-item">
@@ -366,27 +374,102 @@ function renderConnectionList(users, title, connectedIds = []) {
     }).join('');
 
     list.innerHTML = html;
-    
-    // We added a new Lucide icon (the checkmark), so we need to render it
     lucide.createIcons(); 
 }
 
 async function connectWithUser(receiverId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
-    // Attempt to connect silently
+    // Insert with status 'pending'
     await supabaseClient.from('connections').insert([{
         requester_id: currentUserId,
         receiver_id: receiverId,
-        status: 'accepted'
+        status: 'pending' 
     }]);
 
-    // Completely removed the alert block. 
-    // Whether it succeeds or hits a unique constraint error, we just silently refresh the UI.
-    document.getElementById('connection-search').value = '';
-    loadTopConnections(); 
+    // Silently refresh the search so the button turns into "Requested"
+    searchUsers({ target: document.getElementById('connection-search') });
 }
 
+// --- NEW: MUTUAL REQUEST LOGIC ---
+async function updateRequestsBadge() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) return;
+
+    const { count } = await supabaseClient
+        .from('connections')
+        .select('*', { count: 'exact', head: true })
+        .eq('receiver_id', currentUserId)
+        .eq('status', 'pending');
+
+    const badge = document.getElementById('requests-badge');
+    if (badge) {
+        if (count > 0) {
+            badge.innerText = count;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+async function openRequestsModal() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    const modal = document.getElementById('requests-modal');
+    const list = document.getElementById('requests-modal-list');
+    
+    list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">Loading requests...</p>`;
+    modal.style.display = 'flex';
+
+    // Fetch pending requests where the current user is the receiver
+    const { data: pendingRequests } = await supabaseClient
+        .from('connections')
+        .select('id, requester_id')
+        .eq('receiver_id', currentUserId)
+        .eq('status', 'pending');
+
+    if (!pendingRequests || pendingRequests.length === 0) {
+        list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You have no pending requests.</p>`;
+        return;
+    }
+
+    const requesterIds = pendingRequests.map(req => req.requester_id);
+    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', requesterIds);
+
+    list.innerHTML = pendingRequests.map(req => {
+        const user = users.find(u => u.id === req.requester_id);
+        if (!user) return '';
+        return `
+            <div class="connection-item">
+                <div class="connection-user-info">
+                    <div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}">${user.username.charAt(0).toUpperCase()}</div>
+                    <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${user.username}</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="acceptRequest(${req.id})" class="btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">Accept</button>
+                    <button onclick="declineRequest(${req.id})" class="btn-secondary" style="padding: 4px 12px; font-size: 0.8rem; border: 1px solid #d1d5db; background: white;">Decline</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function acceptRequest(connectionId) {
+    await supabaseClient.from('connections').update({ status: 'accepted' }).eq('id', connectionId);
+    openRequestsModal(); 
+    loadTopConnections(); 
+    updateRequestsBadge();
+}
+
+async function declineRequest(connectionId) {
+    await supabaseClient.from('connections').delete().eq('id', connectionId);
+    openRequestsModal(); 
+    updateRequestsBadge();
+}
+
+function closeRequestsModal() {
+    document.getElementById('requests-modal').style.display = 'none';
+}
 
 // ==========================================
 // 6. PROFILE PAGE LOGIC 
