@@ -108,6 +108,7 @@ async function handleSignUp(event) {
     const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
 
     if (insertError) {
+        console.error("SUPABASE SIGNUP ERROR:", insertError);
         showAuthMessage("Error creating account. Please try again.");
         return;
     }
