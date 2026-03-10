@@ -248,18 +248,14 @@ function handleLogout() {
 // 5. CONNECTIONS & SEARCH SYSTEM
 // ==========================================
 
-// Helper function to render either the custom Profile Pic or the default Initial
 function getAvatarHtml(user) {
     let url = null;
-    // Safely extract the avatar_url from the joined profiles table
     if (user.profiles) {
         url = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
     }
-    
     if (url) {
         return `<img src="${url}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="${user.username}">`;
     }
-    // Fallback to the colored initial if no picture exists
     return `<div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}; flex-shrink: 0;">${user.username.charAt(0).toUpperCase()}</div>`;
 }
 
@@ -275,7 +271,6 @@ async function searchUsers(event) {
 
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
 
-    // UPDATED: Joined query to fetch the avatar_url from the profiles table
     const { data: users, error } = await supabaseClient
         .from('app_users')
         .select(`id, username, profiles(avatar_url)`) 
@@ -327,8 +322,6 @@ async function loadTopConnections() {
     }
 
     const connectedUserIds = connections.map(conn => conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id);
-    
-    // UPDATED: Joined query to fetch avatars for top connections
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', connectedUserIds);
 
     const connectionMap = {};
@@ -400,8 +393,6 @@ async function openRequestsModal() {
     }
 
     const requesterIds = pendingRequests.map(req => req.requester_id);
-    
-    // UPDATED: Joined query to fetch avatars for incoming requests
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', requesterIds);
 
     list.innerHTML = pendingRequests.map(req => {
@@ -453,8 +444,6 @@ async function openManageConnectionsModal() {
     myConnections.forEach(conn => connectedIdsMap[conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id] = conn.id);
 
     const otherUserIds = Object.keys(connectedIdsMap);
-    
-    // UPDATED: Joined query to fetch avatars for active connections
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
 
     list.innerHTML = users.map(user => {
@@ -479,6 +468,7 @@ async function removeConnection(connectionId) {
     const searchInput = document.getElementById('connection-search');
     if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
 }
+
 
 // ==========================================
 // 6. PRIVATE PROFILE PAGE LOGIC (account.html)
@@ -516,6 +506,7 @@ async function loadUserProfile() {
             document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
         } else { imgElement.style.display = 'none'; }
 
+        // Render "Skills I Have"
         const skillsContainer = document.getElementById('profile-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
@@ -524,7 +515,6 @@ async function loadUserProfile() {
                 if (s !== "") return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab;">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i></span>`;
                 return "";
             }).join('');
-            lucide.createIcons(); 
             
             if (window.skillsSortable) window.skillsSortable.destroy();
             window.skillsSortable = new Sortable(skillsContainer, {
@@ -535,6 +525,29 @@ async function loadUserProfile() {
                 }
             });
         } else { skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Display your skills...</p>`; }
+
+        // Render "Skills I Want"
+        const wantedSkillsContainer = document.getElementById('profile-wanted-skills-container');
+        if (profile.wanted_skills && profile.wanted_skills.trim() !== "") {
+            const wantedSkillsArray = profile.wanted_skills.split(',');
+            wantedSkillsContainer.innerHTML = wantedSkillsArray.map(skill => {
+                const s = skill.trim();
+                // Notice the custom background color to differentiate!
+                if (s !== "") return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; background-color: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8;">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #f472b6;" onclick="removeWantedSkill('${s}')" title="Remove ${s}"></i></span>`;
+                return "";
+            }).join('');
+            
+            if (window.wantedSkillsSortable) window.wantedSkillsSortable.destroy();
+            window.wantedSkillsSortable = new Sortable(wantedSkillsContainer, {
+                animation: 150, ghostClass: 'sortable-ghost',
+                onEnd: async function () {
+                    const newSkills = Array.from(wantedSkillsContainer.querySelectorAll('.skill-tag')).map(el => el.getAttribute('data-skill')).join(', ');
+                    await supabaseClient.from('profiles').update({ wanted_skills: newSkills }).eq('user_id', userId);
+                }
+            });
+        } else { wantedSkillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">What do you want to learn?</p>`; }
+        
+        lucide.createIcons(); 
     }
 }
 
@@ -564,12 +577,13 @@ function editProfileField(fieldName, promptMessage) {
     };
 }
 
+// Logic for "Skills I Have"
 function addSingleSkill() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
     const modal = document.getElementById('custom-edit-modal');
     if (!modal) return;
-    document.getElementById('modal-title').innerText = "Add a new skill";
+    document.getElementById('modal-title').innerText = "Add a skill you have";
     document.getElementById('modal-input').value = ''; 
     document.getElementById('modal-input').placeholder = "e.g., Penetration Testing, JavaScript...";
     modal.style.display = 'flex';
@@ -601,22 +615,57 @@ async function removeSingleSkill(skillToRemove) {
     }
 }
 
+// NEW Logic for "Skills I Want"
+function addWantedSkill() {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+    const modal = document.getElementById('custom-edit-modal');
+    if (!modal) return;
+    document.getElementById('modal-title').innerText = "Add a skill you want to learn";
+    document.getElementById('modal-input').value = ''; 
+    document.getElementById('modal-input').placeholder = "e.g., Python, Public Speaking...";
+    modal.style.display = 'flex';
+
+    document.getElementById('modal-save-btn').onclick = async function() {
+        const newSkill = document.getElementById('modal-input').value.trim();
+        closeModal();
+        if (newSkill === "") return;
+        const { data: profile } = await supabaseClient.from('profiles').select('wanted_skills').eq('user_id', userId).single();
+        let updatedSkills = profile && profile.wanted_skills ? profile.wanted_skills : "";
+        if (updatedSkills.length > 0) {
+            if (updatedSkills.split(',').map(s => s.trim().toLowerCase()).includes(newSkill.toLowerCase())) return; 
+            updatedSkills += `, ${newSkill}`;
+        } else { updatedSkills = newSkill; }
+        const { error } = await supabaseClient.from('profiles').update({ wanted_skills: updatedSkills }).eq('user_id', userId);
+        if (!error) loadUserProfile(); 
+    };
+}
+
+async function removeWantedSkill(skillToRemove) {
+    const userId = localStorage.getItem('currentUserId');
+    if (!userId) return;
+    const { data: profile } = await supabaseClient.from('profiles').select('wanted_skills').eq('user_id', userId).single();
+    if (profile && profile.wanted_skills) {
+        let skillsArray = profile.wanted_skills.split(',').map(s => s.trim());
+        const updatedSkills = skillsArray.filter(s => s !== skillToRemove && s !== "").join(', ');
+        const { error } = await supabaseClient.from('profiles').update({ wanted_skills: updatedSkills }).eq('user_id', userId);
+        if (!error) loadUserProfile();
+    }
+}
+
 // ==========================================
 // 7. PUBLIC VIEW PROFILE LOGIC (view-profile.html)
 // ==========================================
 
 async function loadPublicProfile() {
-    // 1. Grab the ID from the URL (e.g., view-profile.html?id=123)
     const urlParams = new URLSearchParams(window.location.search);
     const targetUserId = urlParams.get('id');
 
-    // 2. If no ID, redirect back to home
     if (!targetUserId) {
         window.location.href = 'index.html';
         return;
     }
 
-    // 3. Fetch the user's data
     const { data: user } = await supabaseClient.from('app_users').select('username').eq('id', targetUserId).single();
     const { data: profile } = await supabaseClient.from('profiles').select('*').eq('user_id', targetUserId).single();
 
@@ -637,24 +686,14 @@ async function loadPublicProfile() {
         
         const bannerImg = document.getElementById('public-banner-img');
         if (profile.banner_url) {
-            bannerImg.style.display = 'block'; 
-            bannerImg.src = profile.banner_url; 
-            bannerImg.parentElement.style.backgroundColor = 'transparent';
-        } else { 
-            bannerImg.style.display = 'none'; 
-            bannerImg.parentElement.style.backgroundColor = '#d1d5db'; 
-        }
+            bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent';
+        } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
 
         const imgElement = document.getElementById('public-avatar-img');
         if (profile.avatar_url) {
-            document.getElementById('public-page-initial').style.display = 'none'; 
-            imgElement.style.display = 'block'; 
-            imgElement.src = profile.avatar_url;
-        } else { 
-            imgElement.style.display = 'none'; 
-        }
+            document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
+        } else { imgElement.style.display = 'none'; }
 
-        // Render Skills without the "X" button
         const skillsContainer = document.getElementById('public-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
@@ -663,9 +702,18 @@ async function loadPublicProfile() {
                 if (s !== "") return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px;">${s}</span>`;
                 return "";
             }).join('');
-        } else { 
-            skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No skills listed.</p>`; 
-        }
+        } else { skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No skills listed.</p>`; }
+
+        // Render Public "Wanted Skills"
+        const wantedSkillsContainer = document.getElementById('public-wanted-skills-container');
+        if (profile.wanted_skills && profile.wanted_skills.trim() !== "") {
+            const wantedSkillsArray = profile.wanted_skills.split(',');
+            wantedSkillsContainer.innerHTML = wantedSkillsArray.map(skill => {
+                const s = skill.trim();
+                if (s !== "") return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px; background-color: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8;">${s}</span>`;
+                return "";
+            }).join('');
+        } else { wantedSkillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No skills listed.</p>`; }
     }
 }
 
@@ -674,18 +722,11 @@ async function loadPublicCertificates() {
     const targetUserId = urlParams.get('id');
     if (!targetUserId) return;
 
-    const { data: certs } = await supabaseClient
-        .from('certificates')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('display_order', { ascending: true })
-        .order('created_at', { ascending: false }); 
-
+    const { data: certs } = await supabaseClient.from('certificates').select('*').eq('user_id', targetUserId).order('display_order', { ascending: true }).order('created_at', { ascending: false }); 
     allCertificates = certs || [];
     renderPublicCertificatesUI();
 }
 
-// Renders the clean, read-only certificates for the public view
 function renderPublicCertificatesUI() {
     const container = document.getElementById('public-certificates-container');
     const actionsDiv = document.getElementById('public-cert-actions');
@@ -702,7 +743,6 @@ function renderPublicCertificatesUI() {
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
     
-    // Notice how there are NO hover overlays or edit buttons here
     container.innerHTML = visibleCerts.map(cert => `
         <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;">
@@ -713,17 +753,11 @@ function renderPublicCertificatesUI() {
     `).join('');
 
     actionsDiv.style.display = 'flex';
-    if (visibleCertsCount >= allCertificates.length) showMoreBtn.style.display = 'none';
-    else showMoreBtn.style.display = 'inline-block';
-
-    if (allCertificates.length > 2) showAllBtn.style.display = 'inline-block';
-    else showAllBtn.style.display = 'none';
+    if (visibleCertsCount >= allCertificates.length) showMoreBtn.style.display = 'none'; else showMoreBtn.style.display = 'inline-block';
+    if (allCertificates.length > 2) showAllBtn.style.display = 'inline-block'; else showAllBtn.style.display = 'none';
 }
 
-function showMorePublicCertificates() {
-    visibleCertsCount += 2; 
-    renderPublicCertificatesUI();
-}
+function showMorePublicCertificates() { visibleCertsCount += 2; renderPublicCertificatesUI(); }
 
 
 // ==========================================
@@ -927,8 +961,6 @@ async function deleteCertificate(id) {
 function openAllCertsModal() {
     const modal = document.getElementById('all-certs-modal');
     const grid = document.getElementById('light-cert-grid');
-
-    // This checks if we are on the public view profile page. If we are, remove the grab styling.
     const isPublicView = window.location.pathname.includes('view-profile.html');
 
     grid.innerHTML = allCertificates.map(cert => `
@@ -944,7 +976,6 @@ function openAllCertsModal() {
     modal.style.display = 'flex';
     lucide.createIcons(); 
 
-    // Only add drag/drop sorting if this is our private account!
     if (!isPublicView) {
         if (window.modalCertSortable) window.modalCertSortable.destroy();
         window.modalCertSortable = new Sortable(grid, {
@@ -952,7 +983,6 @@ function openAllCertsModal() {
             onEnd: async function (evt) {
                 const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
                 allCertificates.splice(evt.newIndex, 0, movedItem);
-                
                 for (let i = 0; i < allCertificates.length; i++) {
                     allCertificates[i].display_order = i;
                     await supabaseClient.from('certificates').update({ display_order: i }).eq('id', allCertificates[i].id);
@@ -979,7 +1009,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loadCertificates(); 
     }
 
-    // NEW: Check if we are on the new view-profile page!
     if (window.location.pathname.includes('view-profile.html')) {
         loadPublicProfile();
         loadPublicCertificates();
