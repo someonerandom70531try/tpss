@@ -90,12 +90,47 @@
     <main class="main-content" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
         <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Explore Skills</h2>
-            <button class="btn-outline" onclick="console.log('Post a skill modal coming soon!')">+ Post a Skill</button>
+            <button class="btn-outline" onclick="openPostSkillModal()">+ Post a Skill</button>
         </div>
         
         <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
             </div>
     </main>
+
+    <div id="post-skill-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827;">Post a Skill to Exchange</h3>
+                <button onclick="closePostSkillModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Skill Name</label>
+                <input type="text" id="post-skill-name" class="modal-input" placeholder="e.g. React & TypeScript" style="margin-top: 0;">
+            </div>
+            
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Category Tag</label>
+                <input type="text" id="post-skill-tag" class="modal-input" placeholder="e.g. Programming, Arts, Cooking" style="margin-top: 0;">
+            </div>
+
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Description</label>
+                <textarea id="post-skill-desc" class="modal-input" rows="3" placeholder="Describe what you will teach..." style="margin-top: 0;"></textarea>
+            </div>
+
+            <div style="text-align: left; margin-bottom: 25px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Attach a Certificate (Optional)</label>
+                <select id="post-skill-cert" class="modal-input" style="margin-top: 0; background: white; cursor: pointer;">
+                    <option value="">-- No certificate attached --</option>
+                    </select>
+            </div>
+
+            <button onclick="submitPostSkill()" class="btn-primary" style="width: 100%;">Post Skill</button>
+        </div>
+    </div>
 
     <div id="requests-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
