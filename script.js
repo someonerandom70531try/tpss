@@ -276,6 +276,7 @@ async function searchUsers(event) {
 
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
 
+    // 1. Fetch matching users
     const { data: users, error } = await supabaseClient
         .from('app_users')
         .select('id, username')
@@ -289,7 +290,20 @@ async function searchUsers(event) {
         return;
     }
 
-    renderConnectionList(users, "Search Results");
+    // 2. Fetch current user's connections to see who they already know
+    const { data: myConnections } = await supabaseClient
+        .from('connections')
+        .select('requester_id, receiver_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+
+    // Map them into a simple array of IDs
+    const connectedIds = (myConnections || []).map(conn => 
+        conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id
+    );
+
+    // 3. Render the list, passing in the known connections
+    renderConnectionList(users, "Search Results", connectedIds);
 }
 
 async function loadTopConnections() {
@@ -322,42 +336,55 @@ async function loadTopConnections() {
         .select('id, username')
         .in('id', connectedUserIds);
 
-    renderConnectionList(users || [], "Frequent Connections");
+    // Pass the IDs so the UI knows they are already connected
+    renderConnectionList(users || [], "Frequent Connections", connectedUserIds);
 }
 
-function renderConnectionList(users, title) {
+function renderConnectionList(users, title, connectedIds = []) {
     const list = document.getElementById('connections-list');
     
     let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
     
-    html += users.map(u => `
-        <div class="connection-item">
-            <div class="connection-user-info">
-                <div class="connection-avatar" style="background-color: ${getColorForUsername(u.username)}">${u.username.charAt(0).toUpperCase()}</div>
-                <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${u.username}</span>
+    html += users.map(u => {
+        // Check if this specific user ID is in our array of connected friends
+        const isConnected = connectedIds.includes(u.id);
+        
+        // Dynamically choose to show a button OR a clean text label
+        const actionHtml = isConnected 
+            ? `<span style="font-size: 0.75rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Connected</span>`
+            : `<button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>`;
+
+        return `
+            <div class="connection-item">
+                <div class="connection-user-info">
+                    <div class="connection-avatar" style="background-color: ${getColorForUsername(u.username)}">${u.username.charAt(0).toUpperCase()}</div>
+                    <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${u.username}</span>
+                </div>
+                ${actionHtml}
             </div>
-            <button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     list.innerHTML = html;
+    
+    // We added a new Lucide icon (the checkmark), so we need to render it
+    lucide.createIcons(); 
 }
 
 async function connectWithUser(receiverId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
-    const { error } = await supabaseClient.from('connections').insert([{
+    // Attempt to connect silently
+    await supabaseClient.from('connections').insert([{
         requester_id: currentUserId,
         receiver_id: receiverId,
         status: 'accepted'
     }]);
 
-    if (error) {
-        alert("You are already connected with this user!");
-    } else {
-        document.getElementById('connection-search').value = '';
-        loadTopConnections(); 
-    }
+    // Completely removed the alert block. 
+    // Whether it succeeds or hits a unique constraint error, we just silently refresh the UI.
+    document.getElementById('connection-search').value = '';
+    loadTopConnections(); 
 }
 
 
