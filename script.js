@@ -248,6 +248,21 @@ function handleLogout() {
 // 5. CONNECTIONS & SEARCH SYSTEM
 // ==========================================
 
+// Helper function to render either the custom Profile Pic or the default Initial
+function getAvatarHtml(user) {
+    let url = null;
+    // Safely extract the avatar_url from the joined profiles table
+    if (user.profiles) {
+        url = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
+    }
+    
+    if (url) {
+        return `<img src="${url}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="${user.username}">`;
+    }
+    // Fallback to the colored initial if no picture exists
+    return `<div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}; flex-shrink: 0;">${user.username.charAt(0).toUpperCase()}</div>`;
+}
+
 async function searchUsers(event) {
     const query = event.target.value.trim();
     const list = document.getElementById('connections-list');
@@ -260,9 +275,10 @@ async function searchUsers(event) {
 
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
 
+    // UPDATED: Joined query to fetch the avatar_url from the profiles table
     const { data: users, error } = await supabaseClient
         .from('app_users')
-        .select('id, username')
+        .select(`id, username, profiles(avatar_url)`) 
         .ilike('username', `${query}%`) 
         .neq('id', currentUserId)
         .order('username', { ascending: true })
@@ -311,7 +327,9 @@ async function loadTopConnections() {
     }
 
     const connectedUserIds = connections.map(conn => conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id);
-    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', connectedUserIds);
+    
+    // UPDATED: Joined query to fetch avatars for top connections
+    const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', connectedUserIds);
 
     const connectionMap = {};
     connectedUserIds.forEach(id => connectionMap[id] = 'accepted');
@@ -319,7 +337,6 @@ async function loadTopConnections() {
     renderConnectionList(users || [], "Frequent Connections", connectionMap);
 }
 
-// UPDATE: Made the avatar and name clickable to route to view-profile.html
 function renderConnectionList(users, title, connectionMap = {}) {
     const list = document.getElementById('connections-list');
     let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
@@ -336,7 +353,7 @@ function renderConnectionList(users, title, connectionMap = {}) {
         return `
             <div class="connection-item">
                 <div class="connection-user-info" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1" onclick="window.location.href='view-profile.html?id=${u.id}'">
-                    <div class="connection-avatar" style="background-color: ${getColorForUsername(u.username)}">${u.username.charAt(0).toUpperCase()}</div>
+                    ${getAvatarHtml(u)}
                     <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${u.username}</span>
                 </div>
                 ${actionHtml}
@@ -367,7 +384,6 @@ async function updateRequestsBadge() {
     }
 }
 
-// UPDATE: Made avatars clickable in Requests Modal
 async function openRequestsModal() {
     const currentUserId = localStorage.getItem('currentUserId');
     const modal = document.getElementById('requests-modal');
@@ -384,7 +400,9 @@ async function openRequestsModal() {
     }
 
     const requesterIds = pendingRequests.map(req => req.requester_id);
-    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', requesterIds);
+    
+    // UPDATED: Joined query to fetch avatars for incoming requests
+    const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', requesterIds);
 
     list.innerHTML = pendingRequests.map(req => {
         const user = users.find(u => u.id === req.requester_id);
@@ -392,7 +410,7 @@ async function openRequestsModal() {
         return `
             <div class="connection-item">
                 <div class="connection-user-info" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1" onclick="window.location.href='view-profile.html?id=${user.id}'">
-                    <div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}">${user.username.charAt(0).toUpperCase()}</div>
+                    ${getAvatarHtml(user)}
                     <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${user.username}</span>
                 </div>
                 <div style="display: flex; gap: 8px;">
@@ -416,7 +434,6 @@ async function declineRequest(connectionId) {
 
 function closeRequestsModal() { document.getElementById('requests-modal').style.display = 'none'; }
 
-// UPDATE: Made avatars clickable in Active Connections Modal
 async function openManageConnectionsModal() {
     const currentUserId = localStorage.getItem('currentUserId');
     const modal = document.getElementById('manage-connections-modal');
@@ -436,14 +453,16 @@ async function openManageConnectionsModal() {
     myConnections.forEach(conn => connectedIdsMap[conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id] = conn.id);
 
     const otherUserIds = Object.keys(connectedIdsMap);
-    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', otherUserIds);
+    
+    // UPDATED: Joined query to fetch avatars for active connections
+    const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
 
     list.innerHTML = users.map(user => {
         const connId = connectedIdsMap[user.id];
         return `
             <div class="connection-item">
                 <div class="connection-user-info" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1" onclick="window.location.href='view-profile.html?id=${user.id}'">
-                    <div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}">${user.username.charAt(0).toUpperCase()}</div>
+                    ${getAvatarHtml(user)}
                     <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${user.username}</span>
                 </div>
                 <button onclick="removeConnection(${connId})" class="btn-outline" style="padding: 4px 12px; font-size: 0.8rem; border-color: #ef4444; color: #ef4444;">Remove</button>
@@ -460,7 +479,6 @@ async function removeConnection(connectionId) {
     const searchInput = document.getElementById('connection-search');
     if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
 }
-
 
 // ==========================================
 // 6. PRIVATE PROFILE PAGE LOGIC (account.html)
