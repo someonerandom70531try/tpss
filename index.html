@@ -33,13 +33,16 @@
                             <div id="connections-dropdown" class="dropdown-menu" style="width: 280px; right: -10px; top: 45px; padding: 15px; cursor: default;">
                                 <input type="text" id="connection-search" placeholder="Search users by name..." class="modal-input" style="margin-top: 0; padding: 8px 12px; font-size: 0.9rem;" oninput="searchUsers(event)">
                                 
-                                <div style="margin-top: 10px; text-align: right;">
+                                <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">
+                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        My Connections
+                                    </button>
                                     <button onclick="openRequestsModal()" style="background: none; border: none; color: #8b5cf6; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
-                                        Manage Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
+                                        Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
                                     </button>
                                 </div>
 
-                                <div id="connections-list" style="margin-top: 15px; max-height: 250px; overflow-y: auto;">
+                                <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;">
                                     </div>
                             </div>
                         </div>
@@ -87,7 +90,7 @@
     <main class="main-content" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
         <div class="grid-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Explore Skills</h2>
-            <button class="btn-outline" onclick="alert('Post a skill modal coming soon!')">+ Post a Skill</button>
+            <button class="btn-outline" onclick="console.log('Post a skill modal coming soon!')">+ Post a Skill</button>
         </div>
         
         <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
@@ -103,6 +106,19 @@
                 </button>
             </div>
             <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;">
+                </div>
+        </div>
+    </div>
+
+    <div id="manage-connections-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 450px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827;">Manage Connections</h3>
+                <button onclick="closeManageConnectionsModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;">
                 </div>
         </div>
     </div>
