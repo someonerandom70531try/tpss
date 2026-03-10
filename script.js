@@ -985,9 +985,11 @@ function closeAllCertsModal() {
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
+    updateRequestsBadge();
     
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
         loadCertificates(); 
     }
 });
+
