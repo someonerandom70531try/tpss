@@ -127,12 +127,22 @@
 
         <div class="profile-card">
             <div class="flex-row-between" style="margin-bottom: 15px;">
-                <h2 style="margin: 0;">Skills</h2>
+                <h2 style="margin: 0;">Skills I Have</h2>
                 <button class="icon-btn" onclick="addSingleSkill()">
                     <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
             <div id="profile-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;"></div>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Skills I Want</h2>
+                <button class="icon-btn" onclick="addWantedSkill()">
+                    <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="profile-wanted-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;"></div>
         </div>
 
         <div class="profile-card">
@@ -213,8 +223,7 @@
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
-            <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;">
-                </div>
+            <div id="requests-modal-list" style="max-height: 60vh; overflow-y: auto;"></div>
         </div>
     </div>
 
@@ -226,8 +235,7 @@
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
-            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;">
-                </div>
+            <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;"></div>
         </div>
     </div>
 
