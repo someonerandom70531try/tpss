@@ -1,60 +1,155 @@
 // ==========================================
 // 1. INITIALIZATION & SETUP
 // ==========================================
-
 lucide.createIcons();
 
 const SUPABASE_URL = 'https://jndlevikdpkbgmssrqyv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZGxldmlrZHBrYmdtc3NycXl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzM2NTgsImV4cCI6MjA4ODIwOTY1OH0.m-M5FEMr8eZZaT4bJ-HspQZGl03sLcZ6glQ03slZba0';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ==========================================
-// 2. HOME PAGE LOGIC
-// ==========================================
+// Helper function to render Profile Pic or Initial
+function getAvatarHtml(user) {
+    let url = null;
+    if (user.profiles) {
+        url = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
+    }
+    if (url) return `<img src="${url}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="${user.username}">`;
+    return `<div class="connection-avatar" style="width: 36px; height: 36px; background-color: ${getColorForUsername(user.username)}; flex-shrink: 0;">${user.username.charAt(0).toUpperCase()}</div>`;
+}
 
+function getColorForUsername(username) {
+    const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e'];
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+}
+
+// ==========================================
+// 2. HOME PAGE (EXPLORE SKILLS) LOGIC
+// ==========================================
 async function loadSkills() {
     const grid = document.getElementById('skills-grid');
     if (!grid) return; 
 
-    const { data: skills, error } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
+    const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
-    if (error) {
-        grid.innerHTML = `<p>Error loading skills. Please try again later.</p>`;
-        return;
-    }
-
-    if (!skills || skills.length === 0) {
+    if (!rawSkills || rawSkills.length === 0) {
         grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
         return;
     }
 
-    grid.innerHTML = skills.map(skill => `
-        <div class="skill-card" style="border: 1px solid #eee; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <span class="badge" style="font-size:0.75rem; color:#8b5cf6; background:#f5f3ff; padding:4px 8px; border-radius:4px;">${skill.category}</span>
-            <h3 style="margin-top: 10px">${skill.title}</h3>
-            <p style="color: #6b7280; margin: 10px 0">${skill.description || 'No description provided.'}</p>
+    // Fetch authors to display avatars and names
+    const userIds = [...new Set(rawSkills.map(s => s.user_id))];
+    const { data: users } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url)').in('id', userIds);
+
+    const userMap = {};
+    if (users) users.forEach(u => userMap[u.id] = u);
+
+    // Render cards matching your screenshot design
+    grid.innerHTML = rawSkills.map(skill => {
+        const u = userMap[skill.user_id] || { username: 'Unknown' };
+        
+        // Truncate description so cards stay uniform height
+        const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
+
+        return `
+        <div style="border: 1px solid #e5e7eb; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" onclick="window.location.href='view-profile.html?id=${u.id}'">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span style="font-size:0.75rem; font-weight: 600; color:#8b5cf6; background:#f5f3ff; padding:4px 10px; border-radius:6px;">${skill.category}</span>
+                    <i data-lucide="more-horizontal" style="width: 20px; height: 20px; color: #9ca3af;"></i>
+                </div>
+                <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: #111827;">${skill.title}</h3>
+                <p style="color: #4b5563; font-size: 0.9rem; line-height: 1.5; margin: 0 0 20px 0;">${shortDesc}</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; border-top: 1px solid #f3f4f6; padding-top: 15px;">
+                ${getAvatarHtml(u)}
+                <div style="line-height: 1.2;">
+                    <p style="margin: 0; font-size: 0.9rem; font-weight: 600; color: #111827;">${u.username}</p>
+                    <p style="margin: 0; font-size: 0.8rem; color: #6b7280;">Skill Exchanger</p>
+                </div>
+            </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
     
     lucide.createIcons();
 }
 
-// ==========================================
-// 3. AUTHENTICATION LOGIC (SINGLE FORM)
-// ==========================================
+// --- NEW: POST A SKILL MODAL LOGIC ---
+async function openPostSkillModal() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) {
+        window.location.href = "auth.html";
+        return;
+    }
 
+    const certSelect = document.getElementById('post-skill-cert');
+    certSelect.innerHTML = '<option value="">Loading your certificates...</option>';
+    document.getElementById('post-skill-modal').style.display = 'flex';
+
+    // Fetch user's certificates to populate the dropdown
+    const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
+    
+    certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
+    if (certs) {
+        certs.forEach(cert => {
+            certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`;
+        });
+    }
+
+    document.getElementById('post-skill-name').value = '';
+    document.getElementById('post-skill-tag').value = '';
+    document.getElementById('post-skill-desc').value = '';
+}
+
+function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
+
+async function submitPostSkill() {
+    const userId = localStorage.getItem('currentUserId');
+    const name = document.getElementById('post-skill-name').value.trim();
+    const tag = document.getElementById('post-skill-tag').value.trim();
+    const desc = document.getElementById('post-skill-desc').value.trim();
+    const certId = document.getElementById('post-skill-cert').value;
+
+    if (!name || !tag || !desc) return; // Silent fail if fields empty
+
+    // 1. Create the public post in the skills table
+    const payload = { user_id: userId, title: name, category: tag, description: desc };
+    if (certId) payload.certificate_id = certId;
+    await supabaseClient.from('skills').insert([payload]);
+
+    // 2. Cross-reference with 'Skills I Have' (profile_skills)
+    const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
+    let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
+    
+    const exists = currentSkills.some(s => s.toLowerCase() === name.toLowerCase());
+
+    // 3. If it doesn't exist, push it to the top of their list automatically
+    if (!exists) {
+        currentSkills.unshift(name);
+        const updatedStr = currentSkills.filter(s => s !== "").join(', ');
+        await supabaseClient.from('profiles').update({ profile_skills: updatedStr }).eq('user_id', userId);
+    }
+
+    closePostSkillModal();
+    loadSkills(); 
+}
+
+
+// ==========================================
+// 3. AUTHENTICATION LOGIC
+// ==========================================
 let isLoginMode = true;
 
 function toggleAuthMode(event) {
     if (event) event.preventDefault();
     isLoginMode = !isLoginMode;
-    
     const authTitle = document.getElementById('auth-title');
     const authSubtitle = document.getElementById('auth-subtitle');
     const toggleText = document.getElementById('toggle-text');
     const toggleLink = document.getElementById('toggle-link');
     const msgBox = document.getElementById('auth-message');
-    
     const usernameContainer = document.getElementById('username-container');
     const usernameInput = document.getElementById('auth-username');
     const passwordHint = document.getElementById('password-hint');
@@ -63,25 +158,15 @@ function toggleAuthMode(event) {
     if (msgBox) msgBox.style.display = 'none';
 
     if (isLoginMode) {
-        authTitle.innerText = 'Welcome Back';
-        authSubtitle.innerText = 'Enter your details to sign in';
-        toggleText.innerText = "Don't have an account?";
-        toggleLink.innerText = 'Sign up';
-        
-        usernameContainer.style.display = 'none';
-        usernameInput.removeAttribute('required');
-        passwordHint.style.display = 'none';
-        submitBtn.innerText = 'Sign In';
+        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
+        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
+        usernameContainer.style.display = 'none'; usernameInput.removeAttribute('required');
+        passwordHint.style.display = 'none'; submitBtn.innerText = 'Sign In';
     } else {
-        authTitle.innerText = 'Create an Account';
-        authSubtitle.innerText = 'Join the community to start swapping skills';
-        toggleText.innerText = "Already have an account?";
-        toggleLink.innerText = 'Sign in';
-        
-        usernameContainer.style.display = 'block';
-        usernameInput.setAttribute('required', 'true');
-        passwordHint.style.display = 'block';
-        submitBtn.innerText = 'Create Account';
+        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
+        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
+        usernameContainer.style.display = 'block'; usernameInput.setAttribute('required', 'true');
+        passwordHint.style.display = 'block'; submitBtn.innerText = 'Create Account';
     }
 }
 
@@ -95,11 +180,7 @@ function showAuthMessage(message, isError = true) {
 
 async function handleAuthSubmit(event) {
     event.preventDefault(); 
-    if (isLoginMode) {
-        await handleSignIn();
-    } else {
-        await handleSignUp();
-    }
+    if (isLoginMode) await handleSignIn(); else await handleSignUp();
 }
 
 async function handleSignUp() {
@@ -108,44 +189,23 @@ async function handleSignUp() {
     const password = document.getElementById('auth-password').value;
 
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-        showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number.");
-        return;
-    }
+    if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
 
     const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
-
-    if (existingUsers && existingUsers.length > 0) {
-        showAuthMessage("That username or email is already taken.");
-        return;
-    }
+    if (existingUsers && existingUsers.length > 0) { showAuthMessage("That username or email is already taken."); return; }
 
     const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
+    if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
 
-    if (insertError) {
-        showAuthMessage("Error creating account. Please try again.");
-        return;
-    }
-
-    if (newUser) {
-        await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
-    }
-
-    document.getElementById('auth-form').reset();
-    showAuthMessage("Account created successfully! Please sign in.", false);
-    toggleAuthMode(); 
+    if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
+    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
 }
 
 async function handleSignIn() {
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
-
     const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
-
-    if (error || !data || data.length === 0) {
-        showAuthMessage("Invalid email or password.");
-        return;
-    }
+    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
 
     const user = data[0];
     localStorage.setItem('currentUserId', user.id);
@@ -153,17 +213,10 @@ async function handleSignIn() {
     window.location.href = "index.html";
 }
 
+
 // ==========================================
 // 4. UI LOGIC & NAVBAR DROPDOWNS
 // ==========================================
-
-function getColorForUsername(username) {
-    const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e'];
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
-}
-
 async function updateUIForUser() {
     const loggedOutUI = document.getElementById('logged-out-ui');
     const loggedInUI = document.getElementById('logged-in-ui');
@@ -178,35 +231,26 @@ async function updateUIForUser() {
     const currentUserId = localStorage.getItem('currentUserId');
 
     if (currentUser) {
-        loggedOutUI.style.display = 'none';
-        loggedInUI.style.display = 'flex';
-        
+        loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`;
         if (dropdownUsername) dropdownUsername.innerText = currentUser;
 
         if (currentUserId) {
             const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
-
             if (profile && profile.avatar_url && navAvatarImg) {
                 if (avatarInitial) avatarInitial.style.display = 'none';
-                navAvatarImg.src = profile.avatar_url;
-                navAvatarImg.style.display = 'block';
-                if (avatarBtn) {
-                    avatarBtn.style.backgroundColor = 'transparent';
-                    avatarBtn.style.border = '2px solid #22c55e'; 
-                }
+                navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
+                if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
             } else {
                 if (navAvatarImg) navAvatarImg.style.display = 'none';
                 if (avatarInitial) {
-                    avatarInitial.innerText = currentUser.charAt(0).toUpperCase();
-                    avatarInitial.style.display = 'block';
+                    avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'block';
                     if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser);
                 }
             }
         }
     } else {
-        loggedOutUI.style.display = 'block';
-        loggedInUI.style.display = 'none';
+        loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none';
     }
 }
 
@@ -225,9 +269,7 @@ function toggleConnectionsDropdown(event) {
     if (userDropdown) userDropdown.classList.remove('show'); 
     if (connDropdown) {
         connDropdown.classList.toggle('show');
-        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
-            loadTopConnections();
-        }
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') loadTopConnections();
     }
 }
 
@@ -238,56 +280,24 @@ window.onclick = function(event) {
     if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown')) connDropdown.classList.remove('show');
 }
 
-function handleLogout() {
-    localStorage.removeItem('currentUserId');
-    localStorage.removeItem('currentUser');
-    window.location.href = "index.html";
-}
+function handleLogout() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUser'); window.location.href = "index.html"; }
 
 // ==========================================
 // 5. CONNECTIONS & SEARCH SYSTEM
 // ==========================================
-
-function getAvatarHtml(user) {
-    let url = null;
-    if (user.profiles) {
-        url = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
-    }
-    if (url) {
-        return `<img src="${url}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="${user.username}">`;
-    }
-    return `<div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}; flex-shrink: 0;">${user.username.charAt(0).toUpperCase()}</div>`;
-}
-
 async function searchUsers(event) {
     const query = event.target.value.trim();
     const list = document.getElementById('connections-list');
     const currentUserId = localStorage.getItem('currentUserId');
 
-    if (!query) {
-        loadTopConnections();
-        return;
-    }
-
+    if (!query) { loadTopConnections(); return; }
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Searching...</p>`;
 
-    const { data: users, error } = await supabaseClient
-        .from('app_users')
-        .select(`id, username, profiles(avatar_url)`) 
-        .ilike('username', `${query}%`) 
-        .neq('id', currentUserId)
-        .order('username', { ascending: true })
-        .limit(5);
+    const { data: users, error } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).ilike('username', `${query}%`).neq('id', currentUserId).order('username', { ascending: true }).limit(5);
 
-    if (error || !users || users.length === 0) {
-        list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">No users found.</p>`;
-        return;
-    }
+    if (error || !users || users.length === 0) { list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">No users found.</p>`; return; }
 
-    const { data: myConnections } = await supabaseClient
-        .from('connections')
-        .select('requester_id, receiver_id, status')
-        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+    const { data: myConnections } = await supabaseClient.from('connections').select('requester_id, receiver_id, status').or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
 
     const connectionMap = {};
     if (myConnections) {
@@ -306,18 +316,10 @@ async function loadTopConnections() {
     const currentUserId = localStorage.getItem('currentUserId');
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280;">Loading connections...</p>`;
 
-    const { data: connections, error } = await supabaseClient
-        .from('connections')
-        .select('requester_id, receiver_id')
-        .eq('status', 'accepted')
-        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-        .limit(3);
+    const { data: connections, error } = await supabaseClient.from('connections').select('requester_id, receiver_id').eq('status', 'accepted').or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`).limit(3);
 
     if (error || !connections || connections.length === 0) {
-        list.innerHTML = `
-            <p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">Connections</p>
-            <p style="text-align:center; font-size:0.85rem; color:#9ca3af; margin: 0;">No connections yet.</p>
-        `;
+        list.innerHTML = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">Connections</p><p style="text-align:center; font-size:0.85rem; color:#9ca3af; margin: 0;">No connections yet.</p>`;
         return;
     }
 
@@ -326,7 +328,6 @@ async function loadTopConnections() {
 
     const connectionMap = {};
     connectedUserIds.forEach(id => connectionMap[id] = 'accepted');
-
     renderConnectionList(users || [], "Frequent Connections", connectionMap);
 }
 
@@ -353,9 +354,7 @@ function renderConnectionList(users, title, connectionMap = {}) {
             </div>
         `;
     }).join('');
-
-    list.innerHTML = html;
-    lucide.createIcons(); 
+    list.innerHTML = html; lucide.createIcons(); 
 }
 
 async function connectWithUser(receiverId) {
@@ -367,13 +366,10 @@ async function connectWithUser(receiverId) {
 async function updateRequestsBadge() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) return;
-
     const { count } = await supabaseClient.from('connections').select('*', { count: 'exact', head: true }).eq('receiver_id', currentUserId).eq('status', 'pending');
-
     const badge = document.getElementById('requests-badge');
     if (badge) {
-        if (count > 0) { badge.innerText = count; badge.style.display = 'inline-block'; } 
-        else { badge.style.display = 'none'; }
+        if (count > 0) { badge.innerText = count; badge.style.display = 'inline-block'; } else { badge.style.display = 'none'; }
     }
 }
 
@@ -386,11 +382,7 @@ async function openRequestsModal() {
     modal.style.display = 'flex';
 
     const { data: pendingRequests } = await supabaseClient.from('connections').select('id, requester_id').eq('receiver_id', currentUserId).eq('status', 'pending');
-
-    if (!pendingRequests || pendingRequests.length === 0) {
-        list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You have no pending requests.</p>`;
-        return;
-    }
+    if (!pendingRequests || pendingRequests.length === 0) { list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You have no pending requests.</p>`; return; }
 
     const requesterIds = pendingRequests.map(req => req.requester_id);
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', requesterIds);
@@ -413,67 +405,48 @@ async function openRequestsModal() {
     }).join('');
 }
 
-async function acceptRequest(connectionId) {
-    await supabaseClient.from('connections').update({ status: 'accepted' }).eq('id', connectionId);
-    openRequestsModal(); loadTopConnections(); updateRequestsBadge();
-}
-
-async function declineRequest(connectionId) {
-    await supabaseClient.from('connections').delete().eq('id', connectionId);
-    openRequestsModal(); updateRequestsBadge();
-}
-
+async function acceptRequest(connectionId) { await supabaseClient.from('connections').update({ status: 'accepted' }).eq('id', connectionId); openRequestsModal(); loadTopConnections(); updateRequestsBadge(); }
+async function declineRequest(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openRequestsModal(); updateRequestsBadge(); }
 function closeRequestsModal() { document.getElementById('requests-modal').style.display = 'none'; }
 
 async function openManageConnectionsModal() {
     const currentUserId = localStorage.getItem('currentUserId');
     const modal = document.getElementById('manage-connections-modal');
     const list = document.getElementById('manage-connections-list');
-    
     list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">Loading your network...</p>`;
     modal.style.display = 'flex';
 
     const { data: myConnections } = await supabaseClient.from('connections').select('id, requester_id, receiver_id').eq('status', 'accepted').or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
-
-    if (!myConnections || myConnections.length === 0) {
-        list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You don't have any connections yet.</p>`;
-        return;
-    }
+    if (!myConnections || myConnections.length === 0) { list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You don't have any connections yet.</p>`; return; }
 
     const connectedIdsMap = {}; 
     myConnections.forEach(conn => connectedIdsMap[conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id] = conn.id);
-
     const otherUserIds = Object.keys(connectedIdsMap);
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
 
     list.innerHTML = users.map(user => {
-        const connId = connectedIdsMap[user.id];
         return `
             <div class="connection-item">
                 <div class="connection-user-info" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1" onclick="window.location.href='view-profile.html?id=${user.id}'">
                     ${getAvatarHtml(user)}
                     <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${user.username}</span>
                 </div>
-                <button onclick="removeConnection(${connId})" class="btn-outline" style="padding: 4px 12px; font-size: 0.8rem; border-color: #ef4444; color: #ef4444;">Remove</button>
+                <button onclick="removeConnection(${connectedIdsMap[user.id]})" class="btn-outline" style="padding: 4px 12px; font-size: 0.8rem; border-color: #ef4444; color: #ef4444;">Remove</button>
             </div>
         `;
     }).join('');
 }
 
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
-
 async function removeConnection(connectionId) {
-    await supabaseClient.from('connections').delete().eq('id', connectionId);
-    openManageConnectionsModal(); loadTopConnections(); 
-    const searchInput = document.getElementById('connection-search');
-    if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
+    await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); 
+    const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
 }
 
 
 // ==========================================
-// 6. PRIVATE PROFILE PAGE LOGIC (account.html)
+// 6. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
-
 async function loadUserProfile() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) { window.location.href = 'auth.html'; return; }
@@ -497,14 +470,16 @@ async function loadUserProfile() {
         document.getElementById('profile-bio').innerText = profile.bio || "Tell us about yourself...";
         
         const bannerImg = document.getElementById('profile-banner-img');
-        if (profile.banner_url) {
-            bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent';
+        if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent';
         } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
 
         const imgElement = document.getElementById('profile-avatar-img');
-        if (profile.avatar_url) {
-            document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
+        if (profile.avatar_url) { document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
         } else { imgElement.style.display = 'none'; }
+
+        // --- NEW: Identify which skills are active posts so we can turn them green ---
+        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId);
+        const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
         // Render "Skills I Have"
         const skillsContainer = document.getElementById('profile-skills-container');
@@ -512,7 +487,14 @@ async function loadUserProfile() {
             const skillsArray = profile.profile_skills.split(',');
             skillsContainer.innerHTML = skillsArray.map(skill => {
                 const s = skill.trim();
-                if (s !== "") return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab;">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i></span>`;
+                if (s !== "") {
+                    // Check if this skill is in the active posts array
+                    const isActive = activeSkillNames.includes(s.toLowerCase());
+                    const bgStyle = isActive ? "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;" : "";
+                    const iconColor = isActive ? "#10b981" : "#9ca3af";
+                    
+                    return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; ${bgStyle}">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: ${iconColor};" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i></span>`;
+                }
                 return "";
             }).join('');
             
@@ -532,7 +514,6 @@ async function loadUserProfile() {
             const wantedSkillsArray = profile.wanted_skills.split(',');
             wantedSkillsContainer.innerHTML = wantedSkillsArray.map(skill => {
                 const s = skill.trim();
-                // Notice the custom background color to differentiate!
                 if (s !== "") return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; background-color: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8;">${s}<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #f472b6;" onclick="removeWantedSkill('${s}')" title="Remove ${s}"></i></span>`;
                 return "";
             }).join('');
@@ -559,8 +540,7 @@ function editProfileField(fieldName, promptMessage) {
     const modal = document.getElementById('custom-edit-modal');
     if (!modal) return;
     document.getElementById('modal-title').innerText = promptMessage;
-    document.getElementById('modal-input').value = ''; 
-    document.getElementById('modal-input').placeholder = "Type here...";
+    document.getElementById('modal-input').value = ''; document.getElementById('modal-input').placeholder = "Type here...";
     modal.style.display = 'flex';
 
     document.getElementById('modal-save-btn').onclick = async function() {
@@ -577,15 +557,12 @@ function editProfileField(fieldName, promptMessage) {
     };
 }
 
-// Logic for "Skills I Have"
 function addSingleSkill() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
     const modal = document.getElementById('custom-edit-modal');
-    if (!modal) return;
     document.getElementById('modal-title').innerText = "Add a skill you have";
-    document.getElementById('modal-input').value = ''; 
-    document.getElementById('modal-input').placeholder = "e.g., Penetration Testing, JavaScript...";
+    document.getElementById('modal-input').value = ''; document.getElementById('modal-input').placeholder = "e.g., Penetration Testing, JavaScript...";
     modal.style.display = 'flex';
 
     document.getElementById('modal-save-btn').onclick = async function() {
@@ -605,7 +582,6 @@ function addSingleSkill() {
 
 async function removeSingleSkill(skillToRemove) {
     const userId = localStorage.getItem('currentUserId');
-    if (!userId) return;
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     if (profile && profile.profile_skills) {
         let skillsArray = profile.profile_skills.split(',').map(s => s.trim());
@@ -615,15 +591,11 @@ async function removeSingleSkill(skillToRemove) {
     }
 }
 
-// NEW Logic for "Skills I Want"
 function addWantedSkill() {
     const userId = localStorage.getItem('currentUserId');
-    if (!userId) return;
     const modal = document.getElementById('custom-edit-modal');
-    if (!modal) return;
     document.getElementById('modal-title').innerText = "Add a skill you want to learn";
-    document.getElementById('modal-input').value = ''; 
-    document.getElementById('modal-input').placeholder = "e.g., Python, Public Speaking...";
+    document.getElementById('modal-input').value = ''; document.getElementById('modal-input').placeholder = "e.g., Python, Public Speaking...";
     modal.style.display = 'flex';
 
     document.getElementById('modal-save-btn').onclick = async function() {
@@ -643,7 +615,6 @@ function addWantedSkill() {
 
 async function removeWantedSkill(skillToRemove) {
     const userId = localStorage.getItem('currentUserId');
-    if (!userId) return;
     const { data: profile } = await supabaseClient.from('profiles').select('wanted_skills').eq('user_id', userId).single();
     if (profile && profile.wanted_skills) {
         let skillsArray = profile.wanted_skills.split(',').map(s => s.trim());
@@ -653,18 +624,14 @@ async function removeWantedSkill(skillToRemove) {
     }
 }
 
-// ==========================================
-// 7. PUBLIC VIEW PROFILE LOGIC (view-profile.html)
-// ==========================================
 
+// ==========================================
+// 7. PUBLIC VIEW PROFILE LOGIC 
+// ==========================================
 async function loadPublicProfile() {
     const urlParams = new URLSearchParams(window.location.search);
     const targetUserId = urlParams.get('id');
-
-    if (!targetUserId) {
-        window.location.href = 'index.html';
-        return;
-    }
+    if (!targetUserId) { window.location.href = 'index.html'; return; }
 
     const { data: user } = await supabaseClient.from('app_users').select('username').eq('id', targetUserId).single();
     const { data: profile } = await supabaseClient.from('profiles').select('*').eq('user_id', targetUserId).single();
@@ -685,26 +652,31 @@ async function loadPublicProfile() {
         document.getElementById('public-bio').innerText = profile.bio || "No bio provided.";
         
         const bannerImg = document.getElementById('public-banner-img');
-        if (profile.banner_url) {
-            bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent';
-        } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
+        if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } 
+        else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
 
         const imgElement = document.getElementById('public-avatar-img');
-        if (profile.avatar_url) {
-            document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url;
-        } else { imgElement.style.display = 'none'; }
+        if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } 
+        else { imgElement.style.display = 'none'; }
+
+        // --- Identify active posts for public view to turn green ---
+        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId);
+        const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
         const skillsContainer = document.getElementById('public-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
             skillsContainer.innerHTML = skillsArray.map(skill => {
                 const s = skill.trim();
-                if (s !== "") return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px;">${s}</span>`;
+                if (s !== "") {
+                    const isActive = activeSkillNames.includes(s.toLowerCase());
+                    const bgStyle = isActive ? "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;" : "";
+                    return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px; ${bgStyle}">${s}</span>`;
+                }
                 return "";
             }).join('');
         } else { skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No skills listed.</p>`; }
 
-        // Render Public "Wanted Skills"
         const wantedSkillsContainer = document.getElementById('public-wanted-skills-container');
         if (profile.wanted_skills && profile.wanted_skills.trim() !== "") {
             const wantedSkillsArray = profile.wanted_skills.split(',');
@@ -721,10 +693,8 @@ async function loadPublicCertificates() {
     const urlParams = new URLSearchParams(window.location.search);
     const targetUserId = urlParams.get('id');
     if (!targetUserId) return;
-
     const { data: certs } = await supabaseClient.from('certificates').select('*').eq('user_id', targetUserId).order('display_order', { ascending: true }).order('created_at', { ascending: false }); 
-    allCertificates = certs || [];
-    renderPublicCertificatesUI();
+    allCertificates = certs || []; renderPublicCertificatesUI();
 }
 
 function renderPublicCertificatesUI() {
@@ -734,20 +704,12 @@ function renderPublicCertificatesUI() {
     const showAllBtn = document.getElementById('public-show-all-btn');
 
     if (!container || !actionsDiv) return;
-
-    if (allCertificates.length === 0) {
-        container.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No certificates added yet.</p>`;
-        actionsDiv.style.display = 'none';
-        return;
-    }
+    if (allCertificates.length === 0) { container.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No certificates added yet.</p>`; actionsDiv.style.display = 'none'; return; }
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
-    
     container.innerHTML = visibleCerts.map(cert => `
         <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;">
-                <img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
-            </a>
+            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;"><img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a>
             <div style="padding: 15px; font-size: 1rem; font-weight: 500; text-align: center; color: #111827;">${cert.title}</div>
         </div>
     `).join('');
@@ -756,67 +718,36 @@ function renderPublicCertificatesUI() {
     if (visibleCertsCount >= allCertificates.length) showMoreBtn.style.display = 'none'; else showMoreBtn.style.display = 'inline-block';
     if (allCertificates.length > 2) showAllBtn.style.display = 'inline-block'; else showAllBtn.style.display = 'none';
 }
-
 function showMorePublicCertificates() { visibleCertsCount += 2; renderPublicCertificatesUI(); }
 
 
 // ==========================================
 // 8. IMAGE UPLOAD & PDF CROP LOGIC
 // ==========================================
-
-let cropper = null;
-let currentImageField = ''; 
+let cropper = null; let currentImageField = ''; 
 
 function openImageEditor(fieldName) {
     currentImageField = fieldName;
     document.getElementById('image-modal-title').innerText = fieldName === 'avatar_url' ? 'Update Profile Picture' : 'Update Banner';
-    document.getElementById('image-editor-modal').style.display = 'flex';
-    document.getElementById('image-source-options').style.display = 'block';
-    document.getElementById('cropper-container').style.display = 'none';
-    document.getElementById('save-cropped-btn').style.display = 'none';
-    document.getElementById('link-upload-input').value = '';
+    document.getElementById('image-editor-modal').style.display = 'flex'; document.getElementById('image-source-options').style.display = 'block'; document.getElementById('cropper-container').style.display = 'none'; document.getElementById('save-cropped-btn').style.display = 'none'; document.getElementById('link-upload-input').value = '';
     if(cropper) { cropper.destroy(); cropper = null; }
 }
-
 function closeImageEditor() { document.getElementById('image-editor-modal').style.display = 'none'; if(cropper) { cropper.destroy(); cropper = null; } }
-
-function loadFileIntoCropper(event) {
-    const file = event.target.files[0];
-    if(!file) return;
-    initCropper(URL.createObjectURL(file));
-}
-
-function loadLinkIntoCropper() {
-    const url = document.getElementById('link-upload-input').value.trim();
-    if(!url) return;
-    initCropper(url);
-}
-
+function loadFileIntoCropper(event) { const file = event.target.files[0]; if(!file) return; initCropper(URL.createObjectURL(file)); }
+function loadLinkIntoCropper() { const url = document.getElementById('link-upload-input').value.trim(); if(!url) return; initCropper(url); }
 function initCropper(imageUrl) {
-    const imageElement = document.getElementById('image-to-crop');
-    imageElement.crossOrigin = "anonymous"; 
-    imageElement.src = imageUrl;
-    
-    document.getElementById('image-source-options').style.display = 'none';
-    document.getElementById('cropper-container').style.display = 'block';
-    document.getElementById('save-cropped-btn').style.display = 'block';
-
-    const ratio = currentImageField === 'avatar_url' ? 1 / 1 : 4 / 1;
-    if(cropper) cropper.destroy();
-    cropper = new Cropper(imageElement, { aspectRatio: ratio, viewMode: 1, background: false, zoomable: true, dragMode: 'move' });
+    const imageElement = document.getElementById('image-to-crop'); imageElement.crossOrigin = "anonymous"; imageElement.src = imageUrl;
+    document.getElementById('image-source-options').style.display = 'none'; document.getElementById('cropper-container').style.display = 'block'; document.getElementById('save-cropped-btn').style.display = 'block';
+    const ratio = currentImageField === 'avatar_url' ? 1 / 1 : 4 / 1; if(cropper) cropper.destroy(); cropper = new Cropper(imageElement, { aspectRatio: ratio, viewMode: 1, background: false, zoomable: true, dragMode: 'move' });
 }
 
 async function saveCroppedImage() {
     if(!cropper) return;
-    const saveBtn = document.getElementById('save-cropped-btn');
-    saveBtn.innerText = "Uploading..."; saveBtn.disabled = true;
-
+    const saveBtn = document.getElementById('save-cropped-btn'); saveBtn.innerText = "Uploading..."; saveBtn.disabled = true;
     cropper.getCroppedCanvas().toBlob(async (blob) => {
         const userId = localStorage.getItem('currentUserId');
         const fileName = `${userId}_${currentImageField}_${Date.now()}.jpg`;
-
         const { error: uploadError } = await supabaseClient.storage.from('images').upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
-
         if (!uploadError) {
             const { data: urlData } = supabaseClient.storage.from('images').getPublicUrl(fileName);
             await supabaseClient.from('profiles').update({ [currentImageField]: urlData.publicUrl }).eq('user_id', userId);
@@ -829,16 +760,13 @@ async function saveCroppedImage() {
 // ==========================================
 // 9. CERTIFICATES ENGINE 
 // ==========================================
-
-let allCertificates = [];
-let visibleCertsCount = 2; 
+let allCertificates = []; let visibleCertsCount = 2; 
 
 async function loadCertificates() {
     const userId = localStorage.getItem('currentUserId');
     if (!userId) return;
     const { data: certs } = await supabaseClient.from('certificates').select('*').eq('user_id', userId).order('display_order', { ascending: true }).order('created_at', { ascending: false }); 
-    allCertificates = certs || [];
-    renderCertificatesUI();
+    allCertificates = certs || []; renderCertificatesUI();
 }
 
 function renderCertificatesUI() {
@@ -848,34 +776,21 @@ function renderCertificatesUI() {
     const showAllBtn = document.getElementById('cert-show-all-btn');
 
     if (!container || !actionsDiv) return;
-
-    if (allCertificates.length === 0) {
-        container.innerHTML = `<p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`;
-        actionsDiv.style.display = 'none';
-        return;
-    }
+    if (allCertificates.length === 0) { container.innerHTML = `<p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`; actionsDiv.style.display = 'none'; return; }
 
     const visibleCerts = allCertificates.slice(0, visibleCertsCount);
-    
     container.innerHTML = visibleCerts.map(cert => `
         <div class="cert-card-wrapper" data-id="${cert.id}" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <div class="cert-actions-overlay" style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;">
-                <button onclick="renameCertificate(${cert.id}, '${cert.title.replace(/'/g, "\\'")}')" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Rename">
-                    <i data-lucide="pencil" style="width: 16px; height: 16px; color: #4b5563;"></i>
-                </button>
-                <button onclick="deleteCertificate(${cert.id})" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Delete">
-                    <i data-lucide="x" style="width: 16px; height: 16px; color: #ef4444;"></i>
-                </button>
+                <button onclick="renameCertificate(${cert.id}, '${cert.title.replace(/'/g, "\\'")}')" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Rename"><i data-lucide="pencil" style="width: 16px; height: 16px; color: #4b5563;"></i></button>
+                <button onclick="deleteCertificate(${cert.id})" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Delete"><i data-lucide="x" style="width: 16px; height: 16px; color: #ef4444;"></i></button>
             </div>
-            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;">
-                <img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
-            </a>
+            <a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;"><img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a>
             <div style="padding: 15px; font-size: 1rem; font-weight: 500; text-align: center; color: #111827;">${cert.title}</div>
         </div>
     `).join('');
 
-    lucide.createIcons(); 
-    actionsDiv.style.display = 'flex';
+    lucide.createIcons(); actionsDiv.style.display = 'flex';
     if (visibleCertsCount >= allCertificates.length) showMoreBtn.style.display = 'none'; else showMoreBtn.style.display = 'inline-block';
     if (allCertificates.length > 2) showAllBtn.style.display = 'inline-block'; else showAllBtn.style.display = 'none';
 }
@@ -883,120 +798,77 @@ function renderCertificatesUI() {
 function showMoreCertificates() { visibleCertsCount += 2; renderCertificatesUI(); }
 
 async function uploadCertificate(event) {
-    const file = event.target.files[0];
-    if (!file || file.type !== "application/pdf") return;
-
+    const file = event.target.files[0]; if (!file || file.type !== "application/pdf") return;
     const modal = document.getElementById('custom-edit-modal');
-    document.getElementById('modal-title').innerText = "Name your Certificate";
-    document.getElementById('modal-input').value = "";
-    document.getElementById('modal-input').placeholder = "e.g., AWS Cloud Practitioner";
-    modal.style.display = 'flex';
+    document.getElementById('modal-title').innerText = "Name your Certificate"; document.getElementById('modal-input').value = ""; document.getElementById('modal-input').placeholder = "e.g., AWS Cloud Practitioner"; modal.style.display = 'flex';
 
     document.getElementById('modal-save-btn').onclick = async function() {
         const title = document.getElementById('modal-input').value.trim();
-        if (!title) return; 
-        closeModal();
-        await processAndUploadCertificate(file, title);
+        if (!title) return; closeModal(); await processAndUploadCertificate(file, title);
     };
 
     const cancelBtn = document.getElementById('modal-cancel-btn');
-    const originalCancel = cancelBtn.onclick;
-    cancelBtn.onclick = function() { closeModal(); event.target.value = ''; cancelBtn.onclick = originalCancel; };
+    const originalCancel = cancelBtn.onclick; cancelBtn.onclick = function() { closeModal(); event.target.value = ''; cancelBtn.onclick = originalCancel; };
 }
 
 async function processAndUploadCertificate(file, title) {
     const userId = localStorage.getItem('currentUserId');
-    const timestamp = Date.now();
-    const pdfPath = `${userId}/cert_${timestamp}.pdf`;
-    const thumbPath = `${userId}/thumb_${timestamp}.jpg`;
-
-    const container = document.getElementById('profile-certificates-container');
-    container.innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem; text-align: center;">Processing PDF and uploading... Please wait.</p>`;
+    const timestamp = Date.now(); const pdfPath = `${userId}/cert_${timestamp}.pdf`; const thumbPath = `${userId}/thumb_${timestamp}.jpg`;
+    document.getElementById('profile-certificates-container').innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem; text-align: center;">Processing PDF and uploading... Please wait.</p>`;
 
     try {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-        const page = await pdf.getPage(1); 
-        
-        const viewport = page.getViewport({ scale: 1.5 }); 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument(arrayBuffer).promise; const page = await pdf.getPage(1); 
+        const viewport = page.getViewport({ scale: 1.5 }); const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
         canvas.width = viewport.width; canvas.height = viewport.height;
-
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
         const thumbBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
 
         await supabaseClient.storage.from('certificates').upload(pdfPath, file);
         const { data: pdfUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(pdfPath);
-
         await supabaseClient.storage.from('certificates').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' });
         const { data: thumbUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(thumbPath);
 
         await supabaseClient.from('certificates').insert([{ user_id: userId, title: title, pdf_url: pdfUrlData.publicUrl, thumbnail_url: thumbUrlData.publicUrl, display_order: 0 }]);
         loadCertificates();
-    } catch (error) { console.error("Error processing certificate:", error); loadCertificates(); }
+    } catch (error) { console.error("Error:", error); loadCertificates(); }
 }
 
 function renameCertificate(id, currentTitle) {
     const modal = document.getElementById('custom-edit-modal');
-    document.getElementById('modal-title').innerText = "Rename Certificate";
-    document.getElementById('modal-input').value = currentTitle;
-    document.getElementById('modal-input').placeholder = "Enter new name...";
-    modal.style.display = 'flex';
-
+    document.getElementById('modal-title').innerText = "Rename Certificate"; document.getElementById('modal-input').value = currentTitle; document.getElementById('modal-input').placeholder = "Enter new name..."; modal.style.display = 'flex';
     document.getElementById('modal-save-btn').onclick = async function() {
-        const newTitle = document.getElementById('modal-input').value.trim();
-        closeModal();
+        const newTitle = document.getElementById('modal-input').value.trim(); closeModal();
         if (!newTitle || newTitle === currentTitle) return;
-        const { error } = await supabaseClient.from('certificates').update({ title: newTitle }).eq('id', id);
-        if (!error) loadCertificates();
+        await supabaseClient.from('certificates').update({ title: newTitle }).eq('id', id); loadCertificates();
     };
 }
-
-async function deleteCertificate(id) {
-    const { error } = await supabaseClient.from('certificates').delete().eq('id', id);
-    if (!error) loadCertificates();
-}
+async function deleteCertificate(id) { await supabaseClient.from('certificates').delete().eq('id', id); loadCertificates(); }
 
 function openAllCertsModal() {
-    const modal = document.getElementById('all-certs-modal');
-    const grid = document.getElementById('light-cert-grid');
+    const modal = document.getElementById('all-certs-modal'); const grid = document.getElementById('light-cert-grid');
     const isPublicView = window.location.pathname.includes('view-profile.html');
 
     grid.innerHTML = allCertificates.map(cert => `
         <div class="modal-cert-item" ${isPublicView ? '' : `data-id="${cert.id}" style="cursor: grab;"`} style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             ${isPublicView ? '' : `<div style="position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border-radius: 4px; padding: 2px; z-index: 5;"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px; color: #6b7280;"></i></div>`}
-            <a href="${cert.pdf_url}" target="_blank" style="display: block;">
-                <img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}">
-            </a>
+            <a href="${cert.pdf_url}" target="_blank" style="display: block;"><img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a>
             <div style="padding: 12px; font-size: 0.85rem; text-align: center; color: #1f2937; font-weight: 500;">${cert.title}</div>
         </div>
     `).join('');
-
-    modal.style.display = 'flex';
-    lucide.createIcons(); 
+    modal.style.display = 'flex'; lucide.createIcons(); 
 
     if (!isPublicView) {
         if (window.modalCertSortable) window.modalCertSortable.destroy();
         window.modalCertSortable = new Sortable(grid, {
-            animation: 150, 
-            ghostClass: 'sortable-ghost',
-            // NEW: These two lines fix the modal drag bug!
-            forceFallback: true,      
-            fallbackOnBody: true,     
+            animation: 150, ghostClass: 'sortable-ghost', forceFallback: true, fallbackOnBody: true,
             onEnd: async function (evt) {
-                const movedItem = allCertificates.splice(evt.oldIndex, 1)[0];
-                allCertificates.splice(evt.newIndex, 0, movedItem);
-                for (let i = 0; i < allCertificates.length; i++) {
-                    allCertificates[i].display_order = i;
-                    await supabaseClient.from('certificates').update({ display_order: i }).eq('id', allCertificates[i].id);
-                }
+                const movedItem = allCertificates.splice(evt.oldIndex, 1)[0]; allCertificates.splice(evt.newIndex, 0, movedItem);
+                for (let i = 0; i < allCertificates.length; i++) { allCertificates[i].display_order = i; await supabaseClient.from('certificates').update({ display_order: i }).eq('id', allCertificates[i].id); }
                 renderCertificatesUI(); 
             }
         });
     }
 }
-
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
 
 
