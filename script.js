@@ -235,13 +235,21 @@ async function submitPostSkill() {
 
     const payload = { user_id: userId, title: name, category: tag, description: desc };
     
-    // FIX: Parse integer so database accepts the foreign key!
+    // Parse integer so database accepts the foreign key
     if (certId && certId !== "") {
         payload.certificate_id = parseInt(certId); 
     }
 
-    await supabaseClient.from('skills').insert([payload]);
+    // Attempt to insert the post
+    const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
+    
+    // If Supabase rejects it, log the exact reason to the console and stop
+    if (insertError) {
+        console.error("Database Error Rejection:", insertError.message, insertError.details);
+        return; 
+    }
 
+    // Cross-reference with 'Skills I Have'
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
     
