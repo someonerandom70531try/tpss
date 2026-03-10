@@ -471,6 +471,72 @@ function closeRequestsModal() {
     document.getElementById('requests-modal').style.display = 'none';
 }
 
+// --- NEW: MANAGE ACTIVE CONNECTIONS LOGIC ---
+async function openManageConnectionsModal() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    const modal = document.getElementById('manage-connections-modal');
+    const list = document.getElementById('manage-connections-list');
+    
+    list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">Loading your network...</p>`;
+    modal.style.display = 'flex';
+
+    // 1. Fetch all accepted connections for this user
+    const { data: myConnections } = await supabaseClient
+        .from('connections')
+        .select('id, requester_id, receiver_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+
+    if (!myConnections || myConnections.length === 0) {
+        list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px 0;">You don't have any connections yet.</p>`;
+        return;
+    }
+
+    // 2. Map connection IDs to the OTHER user's ID
+    const connectedIdsMap = {}; 
+    myConnections.forEach(conn => {
+        const otherId = conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id;
+        connectedIdsMap[otherId] = conn.id;
+    });
+
+    // 3. Fetch the usernames of those connected friends
+    const otherUserIds = Object.keys(connectedIdsMap);
+    const { data: users } = await supabaseClient.from('app_users').select('id, username').in('id', otherUserIds);
+
+    // 4. Render the list with the red "Remove" button
+    list.innerHTML = users.map(user => {
+        const connId = connectedIdsMap[user.id];
+        return `
+            <div class="connection-item">
+                <div class="connection-user-info">
+                    <div class="connection-avatar" style="background-color: ${getColorForUsername(user.username)}">${user.username.charAt(0).toUpperCase()}</div>
+                    <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${user.username}</span>
+                </div>
+                <button onclick="removeConnection(${connId})" class="btn-outline" style="padding: 4px 12px; font-size: 0.8rem; border-color: #ef4444; color: #ef4444;">Remove</button>
+            </div>
+        `;
+    }).join('');
+}
+
+function closeManageConnectionsModal() {
+    document.getElementById('manage-connections-modal').style.display = 'none';
+}
+
+async function removeConnection(connectionId) {
+    // Silently delete the connection (no annoying prompts!)
+    await supabaseClient.from('connections').delete().eq('id', connectionId);
+    
+    // Refresh the modal so the user instantly disappears
+    openManageConnectionsModal(); 
+    
+    // Refresh the background navbar dropdown as well
+    loadTopConnections(); 
+    const searchInput = document.getElementById('connection-search');
+    if (searchInput && searchInput.value.trim() !== '') {
+        searchUsers({ target: searchInput });
+    }
+}
+
 // ==========================================
 // 6. PROFILE PAGE LOGIC 
 // ==========================================
