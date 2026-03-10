@@ -40,7 +40,7 @@ async function loadSkills() {
 }
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC
+// 3. AUTHENTICATION LOGIC (SINGLE FORM)
 // ==========================================
 
 let isLoginMode = true;
@@ -49,31 +49,41 @@ function toggleAuthMode(event) {
     if (event) event.preventDefault();
     isLoginMode = !isLoginMode;
     
-    const signinForm = document.getElementById('signin-form');
-    const signupForm = document.getElementById('signup-form');
     const authTitle = document.getElementById('auth-title');
     const authSubtitle = document.getElementById('auth-subtitle');
     const toggleText = document.getElementById('toggle-text');
     const toggleLink = document.getElementById('toggle-link');
     const msgBox = document.getElementById('auth-message');
+    
+    const usernameContainer = document.getElementById('username-container');
+    const usernameInput = document.getElementById('auth-username');
+    const passwordHint = document.getElementById('password-hint');
+    const submitBtn = document.getElementById('auth-submit-btn');
 
-    if (!signinForm || !signupForm) return;
     if (msgBox) msgBox.style.display = 'none';
 
     if (isLoginMode) {
-        signinForm.style.display = 'block';
-        signinForm.style.display = 'none';
+        // Switch to Sign In UI
         authTitle.innerText = 'Welcome Back';
         authSubtitle.innerText = 'Enter your details to sign in';
         toggleText.innerText = "Don't have an account?";
         toggleLink.innerText = 'Sign up';
+        
+        usernameContainer.style.display = 'none';
+        usernameInput.removeAttribute('required'); // Remove required constraint
+        passwordHint.style.display = 'none';
+        submitBtn.innerText = 'Sign In';
     } else {
-        signinForm.style.display = 'none';
-        signinForm.style.display = 'block';
+        // Switch to Sign Up UI
         authTitle.innerText = 'Create an Account';
         authSubtitle.innerText = 'Join the community to start swapping skills';
         toggleText.innerText = "Already have an account?";
         toggleLink.innerText = 'Sign in';
+        
+        usernameContainer.style.display = 'block';
+        usernameInput.setAttribute('required', 'true'); // Enforce username
+        passwordHint.style.display = 'block';
+        submitBtn.innerText = 'Create Account';
     }
 }
 
@@ -85,73 +95,53 @@ function showAuthMessage(message, isError = true) {
     msgBox.style.display = 'block';
 }
 
-async function handleSignUp(event) {
-    if (event) event.preventDefault();
-    console.log("1. Sign up button clicked!");
-
-    try {
-        const email = document.getElementById('signup-email').value.trim();
-        const username = document.getElementById('signup-username').value.trim();
-        const password = document.getElementById('signup-password').value;
-
-        console.log("2. Captured data:", { email, username, passwordLength: password.length });
-
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-        if (!passwordRegex.test(password)) {
-            console.log("3. Failed password validation (Needs 8 chars, 1 upper, 1 lower, 1 number).");
-            showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number.");
-            return;
-        }
-
-        console.log("4. Checking database for existing users...");
-        const { data: existingUsers, error: checkError } = await supabaseClient
-            .from('app_users')
-            .select('*')
-            .or(`username.eq.${username},email.eq.${email}`);
-
-        if (checkError) console.error("Check Error:", checkError);
-
-        if (existingUsers && existingUsers.length > 0) {
-            console.log("5. User already exists in database.");
-            showAuthMessage("That username or email is already taken.");
-            return;
-        }
-
-        console.log("6. Attempting to insert new user into app_users...");
-        const { data: newUser, error: insertError } = await supabaseClient
-            .from('app_users')
-            .insert([{ email, username, password }])
-            .select()
-            .single();
-
-        if (insertError) {
-            console.error("7. SUPABASE SIGNUP ERROR:", insertError);
-            showAuthMessage("Error creating account. Please try again.");
-            return;
-        }
-
-        console.log("8. User inserted successfully! Creating profile...");
-        const { error: profileError } = await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
-
-        if (profileError) console.error("9. Profile Error:", profileError);
-
-        console.log("10. Resetting form and updating UI...");
-        document.getElementById('signup-form').reset();
-        showAuthMessage("Account created successfully! Please sign in.", false);
-        toggleAuthMode();
-
-        console.log("11. Sign up complete!");
-
-    } catch (err) {
-        console.error("CRITICAL CRASH in handleSignUp:", err);
+// Master handler that redirects the click to the correct function
+async function handleAuthSubmit(event) {
+    event.preventDefault(); 
+    if (isLoginMode) {
+        await handleSignIn();
+    } else {
+        await handleSignUp();
     }
 }
 
-async function handleSignIn(event) {
-    if (event) event.preventDefault();
-    
-    const email = document.getElementById('signin-email').value.trim();
-    const password = document.getElementById('signin-password').value;
+async function handleSignUp() {
+    const email = document.getElementById('auth-email').value.trim();
+    const username = document.getElementById('auth-username').value.trim();
+    const password = document.getElementById('auth-password').value;
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number.");
+        return;
+    }
+
+    const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
+
+    if (existingUsers && existingUsers.length > 0) {
+        showAuthMessage("That username or email is already taken.");
+        return;
+    }
+
+    const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
+
+    if (insertError) {
+        showAuthMessage("Error creating account. Please try again.");
+        return;
+    }
+
+    if (newUser) {
+        await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
+    }
+
+    document.getElementById('auth-form').reset();
+    showAuthMessage("Account created successfully! Please sign in.", false);
+    toggleAuthMode(); 
+}
+
+async function handleSignIn() {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
 
     const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
 
@@ -165,7 +155,6 @@ async function handleSignIn(event) {
     localStorage.setItem('currentUser', user.username);
     window.location.href = "index.html";
 }
-
 // ==========================================
 // 4. UI LOGIC & NAVBAR DROPDOWNS
 // ==========================================
