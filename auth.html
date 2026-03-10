@@ -3,69 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Authentication | Skill Swap</title>
+    <title>Sign In | Skill Swap</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body style="background-color: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0;">
-    
-    <a href="index.html" style="position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 5px; text-decoration: none; color: #4b5563; font-weight: 500;">
-        <i data-lucide="arrow-left" style="width: 18px; height: 18px;"></i> Back
-    </a>
+<body style="background-color: #f3f2ef; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
 
-    <div style="width: 100%; max-width: 400px; padding: 20px;">
-        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <div style="text-align: center; margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px; font-weight: bold; font-size: 1.2rem;">
-                    <i data-lucide="sparkles" style="color: #8b5cf6;"></i>
-                    <span>SkillSwap</span>
-                </div>
-                <h2 id="auth-title" style="margin: 0; font-size: 1.5rem; color: #111827;">Welcome Back</h2>
-                <p id="auth-subtitle" style="margin: 8px 0 0 0; color: #6b7280; font-size: 0.9rem;">Enter your details to sign in</p>
-            </div>
-
-            <div id="auth-message" class="auth-message"></div>
-
-            <form id="signin-form" onsubmit="handleSignIn(event)">
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Email</label>
-                    <input type="email" id="signin-email" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;">
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Password</label>
-                    <input type="password" id="signin-password" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;">
-                </div>
-                <button type="submit" class="btn-primary" style="width: 100%; padding: 12px;">Sign In</button>
-            </form>
-
-            <form id="signup-form" onsubmit="handleSignUp(event)" style="display: none;">
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Email</label>
-                    <input type="email" id="signup-email" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;">
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Username</label>
-                    <input type="text" id="signup-username" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;">
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Password</label>
-                    <input type="password" id="signup-password" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;">
-                    <p style="font-size: 0.75rem; color: #6b7280; margin-top: 4px;">8+ chars, 1 uppercase, 1 lowercase, 1 number.</p>
-                </div>
-                <button type="submit" class="btn-primary" style="width: 100%; padding: 12px;">Create Account</button>
-            </form>
-
-            <p style="text-align: center; margin-top: 24px; font-size: 0.9rem;">
-                <span id="toggle-text" style="color: #4b5563;">Don't have an account?</span> 
-                <a href="#" onclick="toggleAuthMode(event)" style="color: #8b5cf6; font-weight: 600; text-decoration: none;">
-                    <span id="toggle-link">Sign up</span>
-                </a>
-            </p>
+    <div class="auth-card" style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center;">
+        
+        <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 20px;">
+            <i data-lucide="sparkles" style="color: #8b5cf6;"></i>
+            <h2 style="margin: 0;">SkillSwap</h2>
         </div>
+
+        <h1 id="auth-title" style="margin-bottom: 5px;">Welcome Back</h1>
+        <p id="auth-subtitle" style="color: #6b7280; margin-bottom: 20px; font-size: 0.9rem;">Enter your details to sign in</p>
+
+        <div id="auth-message" style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem;"></div>
+
+        <form id="signin-form" onsubmit="handleSignIn(event)">
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Email</label>
+                <input type="email" id="signin-email" class="modal-input" required style="margin-top: 0;">
+            </div>
+            <div style="text-align: left; margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Password</label>
+                <input type="password" id="signin-password" class="modal-input" required style="margin-top: 0;">
+            </div>
+            <button type="submit" class="btn-primary" style="width: 100%;">Sign In</button>
+        </form>
+
+        <form id="signup-form" onsubmit="handleSignUp(event)" style="display: none;">
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Email</label>
+                <input type="email" id="signup-email" class="modal-input" required style="margin-top: 0;">
+            </div>
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Username</label>
+                <input type="text" id="signup-username" class="modal-input" required style="margin-top: 0;">
+            </div>
+            <div style="text-align: left; margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Password</label>
+                <input type="password" id="signup-password" class="modal-input" required placeholder="8+ chars, 1 uppercase, 1 number" style="margin-top: 0;">
+            </div>
+            <button type="submit" class="btn-primary" style="width: 100%;">Create Account</button>
+        </form>
+
+        <p style="margin-top: 20px; font-size: 0.9rem; color: #4b5563;">
+            <span id="toggle-text">Don't have an account?</span> 
+            <a href="#" id="toggle-link" onclick="toggleAuthMode(event)" style="color: #8b5cf6; text-decoration: none; font-weight: 600;">Sign up</a>
+        </p>
     </div>
-    
+
     <script src="script.js"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
