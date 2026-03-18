@@ -675,3 +675,78 @@ document.addEventListener('DOMContentLoaded', () => {
         loadPublicCertificates();
     }
 });
+
+// ==========================================
+// 10. REALTIME LISTENERS & PAGE LOAD
+// ==========================================
+
+function setupRealtimeListeners() {
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    // 1. Listen for new skills being posted globally
+    supabaseClient
+        .channel('public-skills-feed')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'skills' }, payload => {
+            // Only reload the grid if the user is actually on the home page
+            if (document.getElementById('skills-grid')) {
+                loadSkills();
+            }
+        })
+        .subscribe();
+
+    // 2. Listen for connection requests specific to this user
+    if (currentUserId) {
+        supabaseClient
+            .channel('user-connections')
+            // Listen for any changes (* means Insert, Update, or Delete)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'connections' }, payload => {
+                
+                // Grab the connection row data (it's in 'new' for inserts/updates, and 'old' for deletes)
+                const conn = payload.new || payload.old; 
+                
+                // Check if this connection change actually involves the logged-in user
+                if (conn && (conn.requester_id == currentUserId || conn.receiver_id == currentUserId)) {
+                    
+                    // Update the little red notification badge instantly
+                    updateRequestsBadge();
+                    
+                    // Refresh the background dropdown list
+                    loadTopConnections();
+                    
+                    // If they are actively searching, refresh the search results so the buttons update
+                    const searchInput = document.getElementById('connection-search');
+                    if (searchInput && searchInput.value.trim() !== '') {
+                        searchUsers({ target: searchInput });
+                    }
+
+                    // Optional Magic: If they have the modals open while the change happens, update them live!
+                    if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') {
+                        openRequestsModal();
+                    }
+                    if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') {
+                        openManageConnectionsModal();
+                    }
+                }
+            })
+            .subscribe();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSkills();
+    updateUIForUser();
+    updateRequestsBadge();
+    
+    // Start listening for instant updates the moment the page loads!
+    setupRealtimeListeners();
+    
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+        loadCertificates(); 
+    }
+
+    if (window.location.pathname.includes('view-profile.html')) {
+        loadPublicProfile();
+        loadPublicCertificates();
+    }
+});
