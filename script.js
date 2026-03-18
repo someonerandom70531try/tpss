@@ -682,28 +682,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function setupRealtimeListeners() {
     const currentUserId = localStorage.getItem('currentUserId');
+    console.log("Attempting to connect to Supabase Realtime...");
 
-    // 1. Listen for ANY change to skills (Posted, Updated, or Deleted)
+    // We use ONE master channel to listen to the entire 'public' schema
     supabaseClient
-        .channel('public-skills-feed')
-        // Notice the '*' here! It catches everything now.
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'skills' }, payload => {
-            // Refresh the home feed
-            if (document.getElementById('skills-grid')) loadSkills();
+        .channel('master-db-channel')
+        .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
             
-            // If someone is viewing a profile, refresh it so the green "active post" tags update instantly
-            if (document.getElementById('profile-page-name')) loadUserProfile();
-            if (document.getElementById('public-page-name')) loadPublicProfile();
-        })
-        .subscribe();
+            console.log("🔥 REALTIME UPDATE RECEIVED:", payload.table, payload.event);
 
-    // 2. Listen for connection requests (Unchanged)
-    if (currentUserId) {
-        supabaseClient
-            .channel('user-connections')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'connections' }, payload => {
-                const conn = payload.new || payload.old; 
-                if (conn && (conn.requester_id == currentUserId || conn.receiver_id == currentUserId)) {
+            const table = payload.table;
+            const data = payload.new || payload.old;
+
+            // 1. SKILLS TABLE CHANGES
+            if (table === 'skills') {
+                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+            }
+
+            // 2. CONNECTIONS TABLE CHANGES
+            if (table === 'connections' && currentUserId) {
+                if (data && (data.requester_id == currentUserId || data.receiver_id == currentUserId)) {
                     updateRequestsBadge();
                     loadTopConnections();
                     const searchInput = document.getElementById('connection-search');
@@ -711,34 +711,47 @@ function setupRealtimeListeners() {
                     if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') openRequestsModal();
                     if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') openManageConnectionsModal();
                 }
-            })
-            .subscribe();
+            }
+
+            // 3. PROFILES TABLE CHANGES
+            if (table === 'profiles') {
+                if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid')) loadSkills();
+            }
+
+            // 4. APP_USERS TABLE CHANGES
+            if (table === 'app_users') {
+                if (payload.new && payload.new.id == currentUserId) {
+                    localStorage.setItem('currentUser', payload.new.username);
+                    updateUIForUser();
+                }
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid')) loadSkills();
+            }
+        })
+        .subscribe((status) => {
+            // THIS IS OUR DIAGNOSTIC TOOL!
+            console.log("📡 Realtime Connection Status:", status);
+        });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSkills();
+    updateUIForUser();
+    updateRequestsBadge();
+    
+    setupRealtimeListeners();
+    
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+        loadCertificates(); 
     }
 
-    // 3. NEW: Listen for ANY profile or user account changes (Avatars, Usernames, Bio, Wanted Skills)
-    supabaseClient
-        .channel('global-profiles')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, payload => {
-            // If the logged-in user changed their own pic/data, update the navbar instantly
-            if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
-            
-            // Refresh profile pages instantly if data changes
-            if (document.getElementById('profile-page-name')) loadUserProfile();
-            if (document.getElementById('public-page-name')) loadPublicProfile();
-            
-            // Refresh the home feed so profile pictures on the cards update instantly
-            if (document.getElementById('skills-grid')) loadSkills();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, payload => {
-            // If the logged-in user changed their username, update local storage and navbar
-            if (payload.new && payload.new.id == currentUserId) {
-                localStorage.setItem('currentUser', payload.new.username);
-                updateUIForUser();
-            }
-            // Refresh the pages to reflect the new username
-            if (document.getElementById('profile-page-name')) loadUserProfile();
-            if (document.getElementById('public-page-name')) loadPublicProfile();
-            if (document.getElementById('skills-grid')) loadSkills();
-        })
-        .subscribe();
-}
+    if (window.location.pathname.includes('view-profile.html')) {
+        loadPublicProfile();
+        loadPublicCertificates();
+    }
+});
