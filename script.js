@@ -683,70 +683,62 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupRealtimeListeners() {
     const currentUserId = localStorage.getItem('currentUserId');
 
-    // 1. Listen for new skills being posted globally
+    // 1. Listen for ANY change to skills (Posted, Updated, or Deleted)
     supabaseClient
         .channel('public-skills-feed')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'skills' }, payload => {
-            // Only reload the grid if the user is actually on the home page
-            if (document.getElementById('skills-grid')) {
-                loadSkills();
-            }
+        // Notice the '*' here! It catches everything now.
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'skills' }, payload => {
+            // Refresh the home feed
+            if (document.getElementById('skills-grid')) loadSkills();
+            
+            // If someone is viewing a profile, refresh it so the green "active post" tags update instantly
+            if (document.getElementById('profile-page-name')) loadUserProfile();
+            if (document.getElementById('public-page-name')) loadPublicProfile();
         })
         .subscribe();
 
-    // 2. Listen for connection requests specific to this user
+    // 2. Listen for connection requests (Unchanged)
     if (currentUserId) {
         supabaseClient
             .channel('user-connections')
-            // Listen for any changes (* means Insert, Update, or Delete)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'connections' }, payload => {
-                
-                // Grab the connection row data (it's in 'new' for inserts/updates, and 'old' for deletes)
                 const conn = payload.new || payload.old; 
-                
-                // Check if this connection change actually involves the logged-in user
                 if (conn && (conn.requester_id == currentUserId || conn.receiver_id == currentUserId)) {
-                    
-                    // Update the little red notification badge instantly
                     updateRequestsBadge();
-                    
-                    // Refresh the background dropdown list
                     loadTopConnections();
-                    
-                    // If they are actively searching, refresh the search results so the buttons update
                     const searchInput = document.getElementById('connection-search');
-                    if (searchInput && searchInput.value.trim() !== '') {
-                        searchUsers({ target: searchInput });
-                    }
-
-                    // Optional Magic: If they have the modals open while the change happens, update them live!
-                    if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') {
-                        openRequestsModal();
-                    }
-                    if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') {
-                        openManageConnectionsModal();
-                    }
+                    if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
+                    if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') openRequestsModal();
+                    if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') openManageConnectionsModal();
                 }
             })
             .subscribe();
     }
+
+    // 3. NEW: Listen for ANY profile or user account changes (Avatars, Usernames, Bio, Wanted Skills)
+    supabaseClient
+        .channel('global-profiles')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, payload => {
+            // If the logged-in user changed their own pic/data, update the navbar instantly
+            if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
+            
+            // Refresh profile pages instantly if data changes
+            if (document.getElementById('profile-page-name')) loadUserProfile();
+            if (document.getElementById('public-page-name')) loadPublicProfile();
+            
+            // Refresh the home feed so profile pictures on the cards update instantly
+            if (document.getElementById('skills-grid')) loadSkills();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, payload => {
+            // If the logged-in user changed their username, update local storage and navbar
+            if (payload.new && payload.new.id == currentUserId) {
+                localStorage.setItem('currentUser', payload.new.username);
+                updateUIForUser();
+            }
+            // Refresh the pages to reflect the new username
+            if (document.getElementById('profile-page-name')) loadUserProfile();
+            if (document.getElementById('public-page-name')) loadPublicProfile();
+            if (document.getElementById('skills-grid')) loadSkills();
+        })
+        .subscribe();
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    loadSkills();
-    updateUIForUser();
-    updateRequestsBadge();
-    
-    // Start listening for instant updates the moment the page loads!
-    setupRealtimeListeners();
-    
-    if (document.getElementById('profile-page-name')) {
-        loadUserProfile();
-        loadCertificates(); 
-    }
-
-    if (window.location.pathname.includes('view-profile.html')) {
-        loadPublicProfile();
-        loadPublicCertificates();
-    }
-});
