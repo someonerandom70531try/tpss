@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body style="background-color: #f3f2ef;"> 
+<body> 
     
     <nav class="navbar">
         <div class="nav-container">
@@ -110,8 +110,8 @@
             <h2 style="margin: 0 0 15px 0;">Certificates</h2>
             <div id="public-certificates-container" style="display: flex; flex-direction: column; gap: 15px;"></div>
             
-            <div id="public-cert-actions" style="display: none; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; gap: 10px; justify-content: center;">
-                <button id="public-show-more-btn" class="btn-secondary" onclick="showMorePublicCertificates()" style="padding: 8px 16px; font-size: 0.9rem; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-weight: 500;">Show more</button>
+            <div id="public-cert-actions" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; text-align: center; gap: 10px; justify-content: center;">
+                <button id="public-show-more-btn" class="btn-secondary" onclick="showMorePublicCertificates()" style="padding: 8px 16px; font-size: 0.9rem; background: var(--white); border-radius: 6px; cursor: pointer; font-weight: 500;">Show more</button>
                 <button id="public-show-all-btn" class="btn-primary" onclick="openAllCertsModal()" style="padding: 8px 16px; font-size: 0.9rem;">Show all</button>
             </div>
         </div>
@@ -119,7 +119,7 @@
 
     <div id="all-certs-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; width: 95%;">
-            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px;">
+            <div class="flex-row-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin: 0; color: #111827;">Certificate Gallery</h3>
                 <button onclick="closeAllCertsModal()" class="icon-btn" style="color: #6b7280;">
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
@@ -131,7 +131,7 @@
 
     <div id="requests-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
-            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+            <div class="flex-row-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #111827;">Incoming Requests</h3>
                 <button onclick="closeRequestsModal()" class="icon-btn" style="color: #6b7280;">
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
@@ -143,7 +143,7 @@
 
     <div id="manage-connections-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
-            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+            <div class="flex-row-between" style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #111827;">Manage Connections</h3>
                 <button onclick="closeManageConnectionsModal()" class="icon-btn" style="color: #6b7280;">
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
