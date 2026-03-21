@@ -270,3 +270,67 @@ body {
     color: white; display: flex; align-items: center;
     justify-content: center; font-size: 0.8rem; font-weight: bold;
 }
+
+/* ==========================================
+   HORIZONTAL CAROUSEL STYLES
+   ========================================== */
+
+.carousel-container {
+    width: 100%;
+    overflow: hidden; /* Hides anything outside the container */
+    padding: 10px 0; /* Gives cards a little breathing room for drop shadows */
+}
+
+.skills-carousel-track {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto; /* Allows horizontal scrolling */
+    scroll-behavior: smooth; /* Makes the button clicks glide nicely */
+    scrollbar-width: none; /* Firefox: hides the ugly bottom scrollbar */
+    padding-bottom: 15px; /* Space for the card hover effect */
+}
+
+/* Chrome/Safari: hides the bottom scrollbar */
+.skills-carousel-track::-webkit-scrollbar {
+    display: none; 
+}
+
+/* Force the skill cards to a specific width so they don't squish */
+.skills-carousel-track > div {
+    min-width: 300px; /* Adjust this to change card width */
+    max-width: 300px;
+    flex-shrink: 0; /* Prevents flexbox from squeezing them */
+}
+
+/* The Arrow Buttons */
+.carousel-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 10;
+    color: #4b5563;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.carousel-arrow:hover {
+    background: #f9fafb;
+    color: #111827;
+}
+
+.carousel-arrow.left {
+    left: -15px;
+}
+
+.carousel-arrow.right {
+    right: -15px;
+}
