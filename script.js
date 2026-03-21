@@ -22,52 +22,29 @@ function getColorForUsername(username) {
 }
 
 // ==========================================
-// 2. HOME PAGE (EXPLORE SKILLS) LOGIC
+// 2. HOME PAGE (EXPLORE SKILLS CAROUSEL) LOGIC
 // ==========================================
-// Variables for the "Show More" functionality
-let allGlobalSkills = [];
-let allGlobalUsersMap = {};
-let skillsCurrentlyDisplayed = 0;
-const SKILLS_PER_PAGE = 8;
-
 async function loadSkills() {
-    const grid = document.getElementById('skills-grid');
-    if (!grid) return; 
+    const carouselTrack = document.getElementById('skills-carousel');
+    if (!carouselTrack) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
-        grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
-        const showMoreContainer = document.getElementById('show-more-container');
-        if (showMoreContainer) showMoreContainer.style.display = 'none';
+        carouselTrack.innerHTML = `<p style="text-align: center; color: #6b7280; width: 100%;">No skills posted yet. Be the first!</p>`;
+        updateCarouselArrows();
         return;
     }
 
     const userIds = [...new Set(rawSkills.map(s => s.user_id))];
     const { data: users } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url)').in('id', userIds);
 
-    allGlobalUsersMap = {};
-    if (users) users.forEach(u => allGlobalUsersMap[u.id] = u);
+    const userMap = {};
+    if (users) users.forEach(u => userMap[u.id] = u);
 
-    // Reset the grid and load the first batch
-    grid.innerHTML = '';
-    allGlobalSkills = rawSkills;
-    skillsCurrentlyDisplayed = 0;
-
-    renderMoreSkills();
-}
-
-window.renderMoreSkills = function() {
-    const grid = document.getElementById('skills-grid');
-    if (!grid) return;
-    const currentUserId = localStorage.getItem('currentUserId');
-
-    // Slice out the next 8 skills
-    const nextBatch = allGlobalSkills.slice(skillsCurrentlyDisplayed, skillsCurrentlyDisplayed + SKILLS_PER_PAGE);
-
-    const newHtml = nextBatch.map(skill => {
-        const u = allGlobalUsersMap[skill.user_id] || { username: 'Unknown' };
+    carouselTrack.innerHTML = rawSkills.map(skill => {
+        const u = userMap[skill.user_id] || { username: 'Unknown' };
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
 
@@ -97,22 +74,43 @@ window.renderMoreSkills = function() {
         </div>
         `;
     }).join('');
-
-    // Append to grid (don't overwrite)
-    grid.innerHTML += newHtml;
     
-    // Update displayed count
-    skillsCurrentlyDisplayed += nextBatch.length;
     lucide.createIcons();
+    
+    // Check if arrows should be shown after loading
+    updateCarouselArrows();
+}
 
-    // Toggle button visibility
-    const showMoreContainer = document.getElementById('show-more-container');
-    if (showMoreContainer) {
-        if (skillsCurrentlyDisplayed < allGlobalSkills.length) {
-            showMoreContainer.style.display = 'block';
-        } else {
-            showMoreContainer.style.display = 'none';
-        }
+// --- NEW CAROUSEL CONTROLS ---
+window.scrollCarousel = function(direction) {
+    const track = document.getElementById('skills-carousel');
+    if (!track) return;
+    
+    const scrollAmount = 320 * 2; // Scrolls two cards at a time
+    
+    if (direction === 'left') {
+        track.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    } else {
+        track.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+}
+
+window.updateCarouselArrows = function() {
+    const track = document.getElementById('skills-carousel');
+    const leftBtn = document.getElementById('scroll-left-btn');
+    const rightBtn = document.getElementById('scroll-right-btn');
+    
+    if (!track || !leftBtn || !rightBtn) return;
+    
+    const isScrollable = track.scrollWidth > track.clientWidth;
+    
+    if (isScrollable) {
+        leftBtn.style.display = track.scrollLeft > 0 ? 'flex' : 'none';
+        const maxScrollLeft = track.scrollWidth - track.clientWidth;
+        rightBtn.style.display = track.scrollLeft >= maxScrollLeft - 1 ? 'none' : 'flex';
+    } else {
+        leftBtn.style.display = 'none';
+        rightBtn.style.display = 'none';
     }
 }
 
@@ -130,7 +128,7 @@ window.deletePost = async function(event, postId) {
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 
-// --- NEW: SKILL DEEP DIVE MODAL ---
+// --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
     const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
@@ -704,6 +702,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUIForUser();
     updateRequestsBadge();
     
+    // NEW: Listen to scrolling to update arrow visibility
+    const track = document.getElementById('skills-carousel');
+    if (track) {
+        track.addEventListener('scroll', updateCarouselArrows);
+        window.addEventListener('resize', updateCarouselArrows);
+    }
+    
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
         loadCertificates(); 
@@ -735,7 +740,7 @@ function setupRealtimeListeners() {
 
             // 1. SKILLS TABLE CHANGES
             if (table === 'skills') {
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-carousel')) loadSkills();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
             }
@@ -757,7 +762,7 @@ function setupRealtimeListeners() {
                 if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-carousel')) loadSkills();
             }
 
             // 4. APP_USERS TABLE CHANGES
@@ -768,29 +773,15 @@ function setupRealtimeListeners() {
                 }
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-carousel')) loadSkills();
             }
         })
         .subscribe((status) => {
-            // THIS IS OUR DIAGNOSTIC TOOL!
             console.log("📡 Realtime Connection Status:", status);
         });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadSkills();
-    updateUIForUser();
-    updateRequestsBadge();
-    
+    // We already call loadSkills() in the previous block, but this ensures setupRealtimeListeners fires
     setupRealtimeListeners();
-    
-    if (document.getElementById('profile-page-name')) {
-        loadUserProfile();
-        loadCertificates(); 
-    }
-
-    if (window.location.pathname.includes('view-profile.html')) {
-        loadPublicProfile();
-        loadPublicCertificates();
-    }
 });
