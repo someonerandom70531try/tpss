@@ -76,13 +76,20 @@
             <h2>Explore Skills</h2>
             <button class="btn-outline" onclick="checkWantedSkillsBeforePosting()">+ Post a Skill</button>
         </div>
-        <div id="skills-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
         
-        <div id="show-more-container" style="text-align: center; margin-top: 40px; margin-bottom: 40px; display: none;">
-            <button onclick="renderMoreSkills()" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; background-color: #3b82f6; color: white; border: none; border-radius: 30px; padding: 12px 24px; font-size: 1rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; font-family: inherit;">
-                Show More Skills
-                <i data-lucide="chevron-down" style="width: 20px; height: 20px;"></i>
+        <div class="carousel-container" style="position: relative; display: flex; align-items: center;">
+            
+            <button id="scroll-left-btn" class="carousel-arrow left" onclick="scrollCarousel('left')" style="display: none;">
+                <i data-lucide="chevron-left"></i>
             </button>
+            
+            <div id="skills-carousel" class="skills-carousel-track">
+                </div>
+            
+            <button id="scroll-right-btn" class="carousel-arrow right" onclick="scrollCarousel('right')" style="display: none;">
+                <i data-lucide="chevron-right"></i>
+            </button>
+            
         </div>
     </main>
 
