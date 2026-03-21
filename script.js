@@ -24,6 +24,12 @@ function getColorForUsername(username) {
 // ==========================================
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
+// Variables for the "Show More" functionality
+let allGlobalSkills = [];
+let allGlobalUsersMap = {};
+let skillsCurrentlyDisplayed = 0;
+const SKILLS_PER_PAGE = 8;
+
 async function loadSkills() {
     const grid = document.getElementById('skills-grid');
     if (!grid) return; 
@@ -33,17 +39,35 @@ async function loadSkills() {
     
     if (!rawSkills || rawSkills.length === 0) {
         grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
+        const showMoreContainer = document.getElementById('show-more-container');
+        if (showMoreContainer) showMoreContainer.style.display = 'none';
         return;
     }
 
     const userIds = [...new Set(rawSkills.map(s => s.user_id))];
     const { data: users } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url)').in('id', userIds);
 
-    const userMap = {};
-    if (users) users.forEach(u => userMap[u.id] = u);
+    allGlobalUsersMap = {};
+    if (users) users.forEach(u => allGlobalUsersMap[u.id] = u);
 
-    grid.innerHTML = rawSkills.map(skill => {
-        const u = userMap[skill.user_id] || { username: 'Unknown' };
+    // Reset the grid and load the first batch
+    grid.innerHTML = '';
+    allGlobalSkills = rawSkills;
+    skillsCurrentlyDisplayed = 0;
+
+    renderMoreSkills();
+}
+
+window.renderMoreSkills = function() {
+    const grid = document.getElementById('skills-grid');
+    if (!grid) return;
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    // Slice out the next 8 skills
+    const nextBatch = allGlobalSkills.slice(skillsCurrentlyDisplayed, skillsCurrentlyDisplayed + SKILLS_PER_PAGE);
+
+    const newHtml = nextBatch.map(skill => {
+        const u = allGlobalUsersMap[skill.user_id] || { username: 'Unknown' };
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
 
@@ -73,8 +97,23 @@ async function loadSkills() {
         </div>
         `;
     }).join('');
+
+    // Append to grid (don't overwrite)
+    grid.innerHTML += newHtml;
     
+    // Update displayed count
+    skillsCurrentlyDisplayed += nextBatch.length;
     lucide.createIcons();
+
+    // Toggle button visibility
+    const showMoreContainer = document.getElementById('show-more-container');
+    if (showMoreContainer) {
+        if (skillsCurrentlyDisplayed < allGlobalSkills.length) {
+            showMoreContainer.style.display = 'block';
+        } else {
+            showMoreContainer.style.display = 'none';
+        }
+    }
 }
 
 window.togglePostMenu = function(event, postId) {
@@ -677,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
-// 10. REALTIME LISTENERS & PAGE LOAD
+// 11. REALTIME LISTENERS & PAGE LOAD
 // ==========================================
 
 function setupRealtimeListeners() {
