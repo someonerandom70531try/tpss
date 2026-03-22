@@ -90,7 +90,7 @@ window.deletePost = async function(event, postId) {
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 
-// --- NEW: SKILL DEEP DIVE MODAL ---
+// --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
     const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
@@ -108,7 +108,6 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
-    // Fetch Skill, User, Profile, and Certificate data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
@@ -138,7 +137,6 @@ async function openSkillDetailModal(skillId) {
     else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
     else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
-    // Format Wanted Skills
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
         const skillsArray = user.profiles[0].wanted_skills.split(',');
@@ -185,11 +183,10 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function connectWithUserFromModal(receiverId, skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); // Refresh modal instantly
+    openSkillDetailModal(skillId); 
 }
 
-
-// --- POSTING A SKILL WITH WARNING LOGIC ---
+// --- POSTING A SKILL ---
 async function checkWantedSkillsBeforePosting() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = "auth.html"; return; }
@@ -212,7 +209,6 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-modal').style.display = 'flex';
 
     const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
-    
     certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
     if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
 
@@ -220,9 +216,7 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-tag').value = '';
     document.getElementById('post-skill-desc').value = '';
 }
-
 function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
-
 async function submitPostSkill() {
     const userId = localStorage.getItem('currentUserId');
     const name = document.getElementById('post-skill-name').value.trim();
@@ -233,31 +227,19 @@ async function submitPostSkill() {
     if (!name || !tag || !desc) return; 
 
     const payload = { user_id: userId, title: name, category: tag, description: desc };
-    
-    // Parse integer so database accepts the foreign key
-    if (certId && certId !== "") {
-        payload.certificate_id = parseInt(certId); 
-    }
+    if (certId && certId !== "") payload.certificate_id = parseInt(certId); 
 
-    // Attempt to insert the post
     const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
-    
-    if (insertError) {
-        console.error("Database Error Rejection:", insertError.message, insertError.details);
-        return; 
-    }
+    if (insertError) return; 
 
-    // Cross-reference with 'Skills I Have'
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
     
-    const exists = currentSkills.some(s => s.toLowerCase() === name.toLowerCase());
-    if (!exists) {
+    if (!currentSkills.some(s => s.toLowerCase() === name.toLowerCase())) {
         currentSkills.unshift(name);
         const updatedStr = currentSkills.filter(s => s !== "").join(', ');
         await supabaseClient.from('profiles').update({ profile_skills: updatedStr }).eq('user_id', userId);
     }
-
     closePostSkillModal();
     loadSkills(); 
 }
@@ -350,7 +332,6 @@ function toggleConnectionsDropdown(event) {
     if (userDropdown) userDropdown.classList.remove('show'); 
     if (connDropdown) { connDropdown.classList.toggle('show'); if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') loadTopConnections(); }
 }
-
 window.onclick = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
@@ -361,39 +342,27 @@ function handleLogout() { localStorage.removeItem('currentUserId'); localStorage
 
 
 // ==========================================
-// 5. MESSAGING SYSTEM (WHATSAPP UI)
+// 5. MESSAGING SYSTEM LOGIC (Standalone Page)
 // ==========================================
 let currentChatUserId = null;
 
-async function openMessagesPage() {
+async function initMessagesPage() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = 'auth.html'; return; }
     
-    // Reset Badge
-    const badge = document.getElementById('messages-badge');
-    if (badge) { badge.style.display = 'none'; badge.innerText = "0"; }
-
-    document.getElementById('messages-modal').style.display = 'flex';
-    document.getElementById('chat-messages-area').innerHTML = `
-        <div style="text-align: center; color: #6b7280; margin-top: auto; margin-bottom: auto;">
-            <div style="background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                <i data-lucide="message-circle" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 10px;"></i>
-                <p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: #374151;">Your Messages</p>
-                <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Select a connection to start messaging.</p>
-            </div>
-        </div>
-    `;
     document.getElementById('chat-input-area').style.display = 'none';
     document.getElementById('chat-header-name').innerText = "Skill Swap Chat";
     document.getElementById('chat-header-status').innerText = "Select a connection";
     document.getElementById('chat-header-avatar').innerHTML = `<i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>`;
     lucide.createIcons();
+    
     loadChatConnections();
-}
-
-function closeMessagesPage() {
-    document.getElementById('messages-modal').style.display = 'none';
-    currentChatUserId = null;
+    
+    // Attach listener to input 
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-msg-btn');
+    if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
+    if (chatInput) chatInput.addEventListener('keypress', function (e) { if (e.key === 'Enter') sendChatMessage(); });
 }
 
 async function loadChatConnections() {
@@ -401,7 +370,6 @@ async function loadChatConnections() {
     const chatList = document.getElementById('chat-list');
     chatList.innerHTML = '<p style="text-align:center; color:#6b7280; padding: 20px;">Loading...</p>';
 
-    // Only allow messaging accepted connections
     const { data: myConnections } = await supabaseClient.from('connections').select('requester_id, receiver_id').eq('status', 'accepted').or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
     
     if (!myConnections || myConnections.length === 0) {
@@ -419,9 +387,10 @@ async function loadChatConnections() {
         let avatarUrl = null;
         if (user.profiles) avatarUrl = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
         const avatarStr = avatarUrl ? `'${avatarUrl}'` : null;
+        const activeBg = currentChatUserId == user.id ? 'background: #f3f4f6;' : '';
 
         return `
-        <div onclick="openChatWithUser(${user.id}, '${user.username}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+        <div onclick="openChatWithUser(${user.id}, '${user.username}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s; ${activeBg}" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='${activeBg ? '#f3f4f6' : 'transparent'}'">
             ${getAvatarHtml(user, 48)}
             <div>
                 <h4 style="margin: 0; font-size: 0.95rem; color: #111827;">${user.username}</h4>
@@ -435,16 +404,24 @@ async function loadChatConnections() {
 async function openChatWithUser(userId, username, avatarUrl) {
     currentChatUserId = userId;
     
+    // Update Header
     document.getElementById('chat-header-name').innerText = username;
     document.getElementById('chat-header-status').innerText = "Connected";
-    
     const avatarHtml = avatarUrl 
         ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
         : `<div style="width: 100%; height: 100%; border-radius: 50%; background: ${getColorForUsername(username)}; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600;">${username.charAt(0).toUpperCase()}</div>`;
-    
     document.getElementById('chat-header-avatar').innerHTML = avatarHtml;
+    
     document.getElementById('chat-input-area').style.display = 'flex';
     
+    // Reload sidebar to highlight active user
+    loadChatConnections();
+    
+    // Immediately mark unread messages from this user as READ
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
+    
+    updateMessagesBadge();
     loadChatMessages(userId);
 }
 
@@ -453,7 +430,6 @@ async function loadChatMessages(otherUserId) {
     const chatArea = document.getElementById('chat-messages-area');
     chatArea.innerHTML = '<p style="text-align:center; color:#6b7280; margin-top: 20px;">Loading messages...</p>';
     
-    // Fetch from the 'messages' table
     const { data: messages } = await supabaseClient
         .from('messages')
         .select('*')
@@ -468,10 +444,8 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        const isSender = msg.sender_id == currentUserId;
-        chatArea.innerHTML += createMessageHtml(msg.content, isSender);
+        chatArea.innerHTML += createMessageHtml(msg.content, msg.sender_id == currentUserId);
     });
-    
     chatArea.scrollTop = chatArea.scrollHeight;
 }
 
@@ -493,21 +467,42 @@ async function sendChatMessage() {
     const currentUserId = localStorage.getItem('currentUserId');
     
     if (!content || !currentChatUserId) return;
+    input.value = ''; 
     
-    input.value = ''; // clear immediately
-    
-    // Optimistic UI update
     const chatArea = document.getElementById('chat-messages-area');
     if (chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
     chatArea.innerHTML += createMessageHtml(content, true);
     chatArea.scrollTop = chatArea.scrollHeight;
     
-    // Insert into DB
+    // Insert into DB. The unread flag defaults to false in SQL.
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId,
         receiver_id: currentChatUserId,
         content: content
     }]);
+}
+
+// Function to dynamically count UNREAD messages
+async function updateMessagesBadge() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) return;
+
+    // Fetch the total count of messages where we are the receiver and is_read is false
+    const { count } = await supabaseClient
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('receiver_id', currentUserId)
+        .eq('is_read', false);
+
+    const badge = document.getElementById('messages-badge');
+    if (badge) {
+        if (count > 0) {
+            badge.innerText = count;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
 }
 
 
@@ -544,7 +539,7 @@ function renderConnectionList(users, title, connectionMap = {}) {
     const list = document.getElementById('connections-list'); let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
     html += users.map(u => {
         const status = connectionMap[u.id]; let actionHtml = '';
-        if (status === 'accepted') actionHtml = `<button onclick="openMessagesPage()" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Message</button>`;
+        if (status === 'accepted') actionHtml = `<button onclick="window.location.href='messages.html'" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Message</button>`;
         else if (status === 'pending_sent') actionHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-weight: 500; background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">Requested</span>`;
         else if (status === 'pending_received') actionHtml = `<button onclick="openRequestsModal()" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Review</button>`;
         else actionHtml = `<button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>`;
@@ -810,15 +805,12 @@ function closeAllCertsModal() { document.getElementById('all-certs-modal').style
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
 // ==========================================
-
 function setupRealtimeListeners() {
     const currentUserId = localStorage.getItem('currentUserId');
-    console.log("Attempting to connect to Supabase Realtime...");
 
     supabaseClient
         .channel('master-db-channel')
         .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
-            console.log("🔥 REALTIME UPDATE RECEIVED:", payload.table, payload.event);
             const table = payload.table;
             const data = payload.new || payload.old;
 
@@ -856,61 +848,49 @@ function setupRealtimeListeners() {
                 if (document.getElementById('skills-grid')) loadSkills();
             }
 
-            // --- NEW: MESSAGE REALTIME LISTENER ---
+            // MESSAGING REALTIME
             if (table === 'messages' && currentUserId) {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
-                    // If we are actively chatting with the sender
-                    if (currentChatUserId && (data.sender_id == currentChatUserId || data.receiver_id == currentChatUserId)) {
-                        // Append incoming message visually (outgoing is handled optimistically on send)
-                        if (payload.eventType === 'INSERT' && data.sender_id == currentChatUserId) {
+                    
+                    if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
+                        if (currentChatUserId && data.sender_id == currentChatUserId) {
+                            // We are actively chatting with them! Instantly mark it as read.
+                            supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
+                            
+                            // Show message visually
                             const chatArea = document.getElementById('chat-messages-area');
                             if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
                             if (chatArea) {
                                 chatArea.innerHTML += createMessageHtml(data.content, false);
                                 chatArea.scrollTop = chatArea.scrollHeight;
                             }
-                        }
-                    } else if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
-                        // We received a message from someone else, show the badge!
-                        const badge = document.getElementById('messages-badge');
-                        if (badge && document.getElementById('messages-modal').style.display !== 'flex') {
-                            badge.style.display = 'flex';
-                            badge.innerText = parseInt(badge.innerText || 0) + 1;
+                        } else {
+                            // We are NOT actively chatting with them. Increment the notification badge!
+                            updateMessagesBadge();
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         }
                     }
                 }
             }
         })
-        .subscribe((status) => {
-            console.log("📡 Realtime Connection Status:", status);
-        });
+        .subscribe();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
     updateRequestsBadge();
+    updateMessagesBadge();
     
     setupRealtimeListeners();
     
-    // Attach event listeners for the messaging input
-    const chatInput = document.getElementById('chat-input');
-    const sendBtn = document.getElementById('send-msg-btn');
-    
-    if (sendBtn) {
-        sendBtn.addEventListener('click', sendChatMessage);
+    if (window.location.pathname.includes('messages.html')) {
+        initMessagesPage();
     }
-    if (chatInput) {
-        chatInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendChatMessage();
-        });
-    }
-
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
         loadCertificates(); 
     }
-
     if (window.location.pathname.includes('view-profile.html')) {
         loadPublicProfile();
         loadPublicCertificates();
