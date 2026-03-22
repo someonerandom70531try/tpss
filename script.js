@@ -25,14 +25,15 @@ function getColorForUsername(username) {
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
 async function loadSkills() {
-    const grid = document.getElementById('skills-grid');
-    if (!grid) return; 
+    const carouselTrack = document.getElementById('skills-carousel');
+    if (!carouselTrack) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
-        grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
+        carouselTrack.innerHTML = `<p style="text-align: center; color: #6b7280; width: 100%;">No skills posted yet. Be the first!</p>`;
+        if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
         return;
     }
 
@@ -42,7 +43,7 @@ async function loadSkills() {
     const userMap = {};
     if (users) users.forEach(u => userMap[u.id] = u);
 
-    grid.innerHTML = rawSkills.map(skill => {
+    carouselTrack.innerHTML = rawSkills.map(skill => {
         const u = userMap[skill.user_id] || { username: 'Unknown' };
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
@@ -73,7 +74,33 @@ async function loadSkills() {
         </div>
         `;
     }).join('');
+    
     lucide.createIcons();
+    if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
+}
+
+window.scrollCarousel = function(direction) {
+    const track = document.getElementById('skills-carousel');
+    if (!track) return;
+    const scrollAmount = 320 * 2;
+    if (direction === 'left') track.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    else track.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+}
+
+window.updateCarouselArrows = function() {
+    const track = document.getElementById('skills-carousel');
+    const leftBtn = document.getElementById('scroll-left-btn');
+    const rightBtn = document.getElementById('scroll-right-btn');
+    if (!track || !leftBtn || !rightBtn) return;
+    const isScrollable = track.scrollWidth > track.clientWidth;
+    if (isScrollable) {
+        leftBtn.style.display = track.scrollLeft > 0 ? 'flex' : 'none';
+        const maxScrollLeft = track.scrollWidth - track.clientWidth;
+        rightBtn.style.display = track.scrollLeft >= maxScrollLeft - 1 ? 'none' : 'flex';
+    } else {
+        leftBtn.style.display = 'none';
+        rightBtn.style.display = 'none';
+    }
 }
 
 window.togglePostMenu = function(event, postId) {
@@ -90,7 +117,7 @@ window.deletePost = async function(event, postId) {
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 
-// --- NEW: SKILL DEEP DIVE MODAL ---
+// --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
     const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
@@ -187,7 +214,6 @@ async function connectWithUserFromModal(receiverId, skillId) {
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
     openSkillDetailModal(skillId); // Refresh modal instantly
 }
-
 
 // --- POSTING A SKILL WITH WARNING LOGIC ---
 async function checkWantedSkillsBeforePosting() {
@@ -385,6 +411,7 @@ async function initMessagesPage() {
     if (chatInput) chatInput.addEventListener('keypress', function (e) { if (e.key === 'Enter') sendChatMessage(); });
 }
 
+// FIXED: Now correctly fetches and displays message previews in the sidebar
 async function loadChatConnections() {
     const currentUserId = localStorage.getItem('currentUserId');
     const chatList = document.getElementById('chat-list');
@@ -427,7 +454,7 @@ async function loadChatConnections() {
                 const prefix = lastMsg.sender_id == currentUserId ? "You: " : "";
                 lastMsgText = prefix + lastMsg.content;
                 
-                // If they sent it and you haven't read it yet, bold the text
+                // If they sent it and you haven't read it yet, flag it
                 if (lastMsg.sender_id == user.id && !lastMsg.is_read) {
                     isUnread = true;
                 }
@@ -437,7 +464,7 @@ async function loadChatConnections() {
         const msgStyle = isUnread ? "color: #111827; font-weight: 600;" : "color: #6b7280;";
 
         return `
-        <div onclick="openChatWithUser(${user.id}, '${user.username}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s; ${activeBg}" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='${activeBg ? '#f3f4f6' : 'transparent'}'">
+        <div onclick="openChatWithUser(${user.id}, '${user.username.replace(/'/g, "\\'")}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s; ${activeBg}" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='${activeBg ? '#f3f4f6' : 'transparent'}'">
             ${getAvatarHtml(user, 48)}
             <div style="flex: 1; overflow: hidden;">
                 <div style="display: flex; justify-content: space-between; align-items: baseline;">
@@ -867,7 +894,7 @@ function setupRealtimeListeners() {
             const data = payload.new || payload.old;
 
             if (table === 'skills') {
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
             }
@@ -887,7 +914,7 @@ function setupRealtimeListeners() {
                 if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
             }
 
             if (table === 'app_users') {
@@ -897,7 +924,7 @@ function setupRealtimeListeners() {
                 }
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-grid')) loadSkills();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
             }
 
             // MESSAGING REALTIME
@@ -917,7 +944,7 @@ function setupRealtimeListeners() {
                                 chatArea.scrollTop = chatArea.scrollHeight;
                             }
                             
-                            // NEW: Update sidebar immediately to show latest message preview
+                            // Update sidebar immediately to show latest message preview
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         } else {
                             // We are NOT actively chatting with them. Increment the notification badge!
