@@ -90,7 +90,7 @@ window.deletePost = async function(event, postId) {
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 
-// --- SKILL DEEP DIVE MODAL ---
+// --- NEW: SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
     const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
@@ -108,6 +108,7 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
+    // Fetch Skill, User, Profile, and Certificate data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
@@ -137,6 +138,7 @@ async function openSkillDetailModal(skillId) {
     else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
     else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
+    // Format Wanted Skills
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
         const skillsArray = user.profiles[0].wanted_skills.split(',');
@@ -183,10 +185,11 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function connectWithUserFromModal(receiverId, skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); 
+    openSkillDetailModal(skillId); // Refresh modal instantly
 }
 
-// --- POSTING A SKILL ---
+
+// --- POSTING A SKILL WITH WARNING LOGIC ---
 async function checkWantedSkillsBeforePosting() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = "auth.html"; return; }
@@ -209,6 +212,7 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-modal').style.display = 'flex';
 
     const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
+    
     certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
     if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
 
@@ -216,7 +220,9 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-tag').value = '';
     document.getElementById('post-skill-desc').value = '';
 }
+
 function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
+
 async function submitPostSkill() {
     const userId = localStorage.getItem('currentUserId');
     const name = document.getElementById('post-skill-name').value.trim();
@@ -227,26 +233,39 @@ async function submitPostSkill() {
     if (!name || !tag || !desc) return; 
 
     const payload = { user_id: userId, title: name, category: tag, description: desc };
-    if (certId && certId !== "") payload.certificate_id = parseInt(certId); 
+    
+    // Parse integer so database accepts the foreign key
+    if (certId && certId !== "") {
+        payload.certificate_id = parseInt(certId); 
+    }
 
+    // Attempt to insert the post
     const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
-    if (insertError) return; 
+    
+    // If Supabase rejects it, log the exact reason to the console and stop
+    if (insertError) {
+        console.error("Database Error Rejection:", insertError.message, insertError.details);
+        return; 
+    }
 
+    // Cross-reference with 'Skills I Have'
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
     
-    if (!currentSkills.some(s => s.toLowerCase() === name.toLowerCase())) {
+    const exists = currentSkills.some(s => s.toLowerCase() === name.toLowerCase());
+    if (!exists) {
         currentSkills.unshift(name);
         const updatedStr = currentSkills.filter(s => s !== "").join(', ');
         await supabaseClient.from('profiles').update({ profile_skills: updatedStr }).eq('user_id', userId);
     }
+
     closePostSkillModal();
     loadSkills(); 
 }
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC
+// 3. AUTHENTICATION LOGIC (SINGLE FORM)
 // ==========================================
 let isLoginMode = true;
 
@@ -332,6 +351,7 @@ function toggleConnectionsDropdown(event) {
     if (userDropdown) userDropdown.classList.remove('show'); 
     if (connDropdown) { connDropdown.classList.toggle('show'); if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') loadTopConnections(); }
 }
+
 window.onclick = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
@@ -383,18 +403,48 @@ async function loadChatConnections() {
     
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
     
+    // FETCH LATEST MESSAGES TO DISPLAY PREVIEWS
+    const { data: messages } = await supabaseClient
+        .from('messages')
+        .select('*')
+        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+        .order('created_at', { ascending: false });
+    
     chatList.innerHTML = users.map(user => {
         let avatarUrl = null;
         if (user.profiles) avatarUrl = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
         const avatarStr = avatarUrl ? `'${avatarUrl}'` : null;
         const activeBg = currentChatUserId == user.id ? 'background: #f3f4f6;' : '';
 
+        // Find the most recent message between you and this specific user
+        let lastMsgText = "Tap to view chat";
+        let isUnread = false;
+        
+        if (messages) {
+            const lastMsg = messages.find(m => (m.sender_id == user.id && m.receiver_id == currentUserId) || (m.sender_id == currentUserId && m.receiver_id == user.id));
+            if (lastMsg) {
+                // If you sent it, add "You: " to the front
+                const prefix = lastMsg.sender_id == currentUserId ? "You: " : "";
+                lastMsgText = prefix + lastMsg.content;
+                
+                // If they sent it and you haven't read it yet, bold the text
+                if (lastMsg.sender_id == user.id && !lastMsg.is_read) {
+                    isUnread = true;
+                }
+            }
+        }
+
+        const msgStyle = isUnread ? "color: #111827; font-weight: 600;" : "color: #6b7280;";
+
         return `
         <div onclick="openChatWithUser(${user.id}, '${user.username}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s; ${activeBg}" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='${activeBg ? '#f3f4f6' : 'transparent'}'">
             ${getAvatarHtml(user, 48)}
-            <div>
-                <h4 style="margin: 0; font-size: 0.95rem; color: #111827;">${user.username}</h4>
-                <p style="margin: 0; font-size: 0.8rem; color: #6b7280;">Tap to view chat</p>
+            <div style="flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <h4 style="margin: 0; font-size: 0.95rem; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${user.username}</h4>
+                    ${isUnread ? '<div style="width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%;"></div>' : ''}
+                </div>
+                <p style="margin: 4px 0 0 0; font-size: 0.8rem; ${msgStyle} white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${lastMsgText}</p>
             </div>
         </div>`;
     }).join('');
@@ -414,13 +464,12 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
-    // Reload sidebar to highlight active user
-    loadChatConnections();
-    
     // Immediately mark unread messages from this user as READ
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
+    // Reload sidebar to highlight active user and remove unread dots
+    loadChatConnections();
     updateMessagesBadge();
     loadChatMessages(userId);
 }
@@ -474,12 +523,15 @@ async function sendChatMessage() {
     chatArea.innerHTML += createMessageHtml(content, true);
     chatArea.scrollTop = chatArea.scrollHeight;
     
-    // Insert into DB. The unread flag defaults to false in SQL.
+    // Insert into DB
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId,
         receiver_id: currentChatUserId,
         content: content
     }]);
+
+    // Update the sidebar so it immediately shows "You: [message]"
+    loadChatConnections();
 }
 
 // Function to dynamically count UNREAD messages
@@ -864,11 +916,17 @@ function setupRealtimeListeners() {
                                 chatArea.innerHTML += createMessageHtml(data.content, false);
                                 chatArea.scrollTop = chatArea.scrollHeight;
                             }
+                            
+                            // NEW: Update sidebar immediately to show latest message preview
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         } else {
                             // We are NOT actively chatting with them. Increment the notification badge!
                             updateMessagesBadge();
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         }
+                    } else if (data.sender_id == currentUserId && payload.eventType === 'INSERT') {
+                         // We sent a message, update sidebar to show "You: message"
+                         if (window.location.pathname.includes('messages.html')) loadChatConnections();
                     }
                 }
             }
