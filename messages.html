@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages | Skill Swap</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body style="background-color: #f3f2ef; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden;"> 
+    
+    <nav class="navbar" style="flex-shrink: 0;">
+        <div class="nav-container">
+            <div class="logo">
+                <i data-lucide="sparkles" class="primary-icon"></i>
+                <a href="index.html" style="text-decoration: none; color: inherit;"><span>SkillSwap</span></a>
+            </div>
+            <div class="nav-actions">
+                <div id="auth-container" style="position: relative;">
+                    <div id="logged-out-ui"><a href="auth.html" class="btn-primary">Sign In</a></div>
+                    <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
+                        
+                        <div style="position: relative;">
+                            <button class="icon-btn" onclick="window.location.href='messages.html'" title="Messages" style="padding: 6px;">
+                                <i data-lucide="message-square-text" style="width: 22px; height: 22px; color: #8b5cf6;"></i> <span id="messages-badge" style="position: absolute; top: -5px; right: -5px; background-color: #ef4444; color: white; font-size: 0.7rem; font-weight: 700; border-radius: 50%; width: 16px; height: 16px; display: none; align-items: center; justify-content: center;">0</span>
+                            </button>
+                        </div>
+
+                        <div style="position: relative;">
+                            <button class="icon-btn" onclick="toggleConnectionsDropdown(event)" title="My Network" style="padding: 6px;">
+                                <i data-lucide="users" style="width: 22px; height: 22px; color: #4b5563;"></i>
+                            </button>
+                            <div id="connections-dropdown" class="dropdown-menu" style="width: 320px; right: -10px; top: 45px; padding: 15px; cursor: default;">
+                                <input type="text" id="connection-search" placeholder="Search users by name..." class="modal-input" style="margin-top: 0; padding: 8px 12px; font-size: 0.9rem;" oninput="searchUsers(event)">
+                                <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">
+                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">My Connections</button>
+                                    <button onclick="openRequestsModal()" style="background: none; border: none; color: #8b5cf6; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
+                                    </button>
+                                </div>
+                                <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;"></div>
+                            </div>
+                        </div>
+
+                        <div style="position: relative;">
+                            <button id="user-avatar-btn" class="avatar-btn" title="Basic Info" onclick="toggleDropdown(event)" style="overflow: hidden; padding: 0;">
+                                <span id="avatar-initial"></span>
+                                <img id="nav-avatar-img" src="" style="display: none; width: 100%; height: 100%; object-fit: cover;" alt="User">
+                            </button>
+                            <div id="user-dropdown" class="dropdown-menu">
+                                <div class="dropdown-header">
+                                    <p id="dropdown-username" style="font-weight: 600; margin: 0; color: #1f2937;">Username</p>
+                                    <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
+                                </div>
+                                <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
+                                <a href="account.html" class="dropdown-item"><i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account</a>
+                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main style="flex: 1; max-width: 1200px; margin: 20px auto; width: 100%; display: flex; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        
+        <div style="width: 350px; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; background: #ffffff; flex-shrink: 0;">
+            <div style="padding: 15px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
+                <h3 style="margin: 0; font-size: 1.2rem; color: #111827;">Chats</h3>
+            </div>
+            <div id="chat-list" style="flex: 1; overflow-y: auto;">
+                <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 0.9rem;">Loading chats...</div>
+            </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; background: #efeae2; position: relative;">
+            
+            <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; gap: 12px; height: 65px; box-sizing: border-box;">
+                <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
+                </div>
+                <div style="flex: 1;">
+                    <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Messages</h4>
+                    <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
+                </div>
+            </div>
+            
+            <div id="chat-messages-area" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+                <div style="text-align: center; color: #6b7280; margin-top: auto; margin-bottom: auto;">
+                    <div style="background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <i data-lucide="message-circle" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 10px;"></i>
+                        <p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: #374151;">Your Messages</p>
+                        <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Private, end-to-end skill swapping.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="chat-input-area" style="padding: 10px 15px; background: #f0f2f5; display: none; align-items: center; gap: 10px;">
+                <input type="text" id="chat-input" placeholder="Type a message..." style="flex: 1; padding: 12px 15px; border: none; border-radius: 8px; outline: none; font-size: 0.95rem; font-family: inherit;">
+                <button id="send-msg-btn" class="icon-btn" style="color: #ffffff; background: #8b5cf6; padding: 10px; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><i data-lucide="send" style="width: 18px; height: 18px; margin-left: -2px;"></i></button>
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
