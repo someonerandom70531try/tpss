@@ -22,18 +22,17 @@ function getColorForUsername(username) {
 }
 
 // ==========================================
-// 2. HOME PAGE (EXPLORE SKILLS CAROUSEL) LOGIC
+// 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
 async function loadSkills() {
-    const carouselTrack = document.getElementById('skills-carousel');
-    if (!carouselTrack) return; 
+    const grid = document.getElementById('skills-grid');
+    if (!grid) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
-        carouselTrack.innerHTML = `<p style="text-align: center; color: #6b7280; width: 100%;">No skills posted yet. Be the first!</p>`;
-        updateCarouselArrows();
+        grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; color: #6b7280;">No skills posted yet. Be the first!</p>`;
         return;
     }
 
@@ -43,7 +42,7 @@ async function loadSkills() {
     const userMap = {};
     if (users) users.forEach(u => userMap[u.id] = u);
 
-    carouselTrack.innerHTML = rawSkills.map(skill => {
+    grid.innerHTML = rawSkills.map(skill => {
         const u = userMap[skill.user_id] || { username: 'Unknown' };
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
@@ -74,44 +73,7 @@ async function loadSkills() {
         </div>
         `;
     }).join('');
-    
     lucide.createIcons();
-    
-    // Check if arrows should be shown after loading
-    updateCarouselArrows();
-}
-
-// --- NEW CAROUSEL CONTROLS ---
-window.scrollCarousel = function(direction) {
-    const track = document.getElementById('skills-carousel');
-    if (!track) return;
-    
-    const scrollAmount = 320 * 2; // Scrolls two cards at a time
-    
-    if (direction === 'left') {
-        track.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
-    } else {
-        track.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-    }
-}
-
-window.updateCarouselArrows = function() {
-    const track = document.getElementById('skills-carousel');
-    const leftBtn = document.getElementById('scroll-left-btn');
-    const rightBtn = document.getElementById('scroll-right-btn');
-    
-    if (!track || !leftBtn || !rightBtn) return;
-    
-    const isScrollable = track.scrollWidth > track.clientWidth;
-    
-    if (isScrollable) {
-        leftBtn.style.display = track.scrollLeft > 0 ? 'flex' : 'none';
-        const maxScrollLeft = track.scrollWidth - track.clientWidth;
-        rightBtn.style.display = track.scrollLeft >= maxScrollLeft - 1 ? 'none' : 'flex';
-    } else {
-        leftBtn.style.display = 'none';
-        rightBtn.style.display = 'none';
-    }
 }
 
 window.togglePostMenu = function(event, postId) {
@@ -128,7 +90,7 @@ window.deletePost = async function(event, postId) {
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 
-// --- SKILL DEEP DIVE MODAL ---
+// --- NEW: SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
     const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
@@ -280,7 +242,6 @@ async function submitPostSkill() {
     // Attempt to insert the post
     const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
     
-    // If Supabase rejects it, log the exact reason to the console and stop
     if (insertError) {
         console.error("Database Error Rejection:", insertError.message, insertError.details);
         return; 
@@ -303,7 +264,7 @@ async function submitPostSkill() {
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC (SINGLE FORM)
+// 3. AUTHENTICATION LOGIC
 // ==========================================
 let isLoginMode = true;
 
@@ -398,8 +359,160 @@ window.onclick = function(event) {
 }
 function handleLogout() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUser'); window.location.href = "index.html"; }
 
+
 // ==========================================
-// 5. CONNECTIONS & SEARCH SYSTEM
+// 5. MESSAGING SYSTEM (WHATSAPP UI)
+// ==========================================
+let currentChatUserId = null;
+
+async function openMessagesPage() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) { window.location.href = 'auth.html'; return; }
+    
+    // Reset Badge
+    const badge = document.getElementById('messages-badge');
+    if (badge) { badge.style.display = 'none'; badge.innerText = "0"; }
+
+    document.getElementById('messages-modal').style.display = 'flex';
+    document.getElementById('chat-messages-area').innerHTML = `
+        <div style="text-align: center; color: #6b7280; margin-top: auto; margin-bottom: auto;">
+            <div style="background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <i data-lucide="message-circle" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 10px;"></i>
+                <p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: #374151;">Your Messages</p>
+                <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Select a connection to start messaging.</p>
+            </div>
+        </div>
+    `;
+    document.getElementById('chat-input-area').style.display = 'none';
+    document.getElementById('chat-header-name').innerText = "Skill Swap Chat";
+    document.getElementById('chat-header-status').innerText = "Select a connection";
+    document.getElementById('chat-header-avatar').innerHTML = `<i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>`;
+    lucide.createIcons();
+    loadChatConnections();
+}
+
+function closeMessagesPage() {
+    document.getElementById('messages-modal').style.display = 'none';
+    currentChatUserId = null;
+}
+
+async function loadChatConnections() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    const chatList = document.getElementById('chat-list');
+    chatList.innerHTML = '<p style="text-align:center; color:#6b7280; padding: 20px;">Loading...</p>';
+
+    // Only allow messaging accepted connections
+    const { data: myConnections } = await supabaseClient.from('connections').select('requester_id, receiver_id').eq('status', 'accepted').or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
+    
+    if (!myConnections || myConnections.length === 0) {
+        chatList.innerHTML = '<p style="text-align:center; color:#6b7280; padding: 20px; font-size: 0.9rem;">You have no connections yet. Make a connection to start chatting!</p>';
+        return;
+    }
+
+    const connectedIdsMap = {}; 
+    myConnections.forEach(conn => connectedIdsMap[conn.requester_id == currentUserId ? conn.receiver_id : conn.requester_id] = true);
+    const otherUserIds = Object.keys(connectedIdsMap); 
+    
+    const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
+    
+    chatList.innerHTML = users.map(user => {
+        let avatarUrl = null;
+        if (user.profiles) avatarUrl = Array.isArray(user.profiles) ? user.profiles[0]?.avatar_url : user.profiles.avatar_url;
+        const avatarStr = avatarUrl ? `'${avatarUrl}'` : null;
+
+        return `
+        <div onclick="openChatWithUser(${user.id}, '${user.username}', ${avatarStr})" style="display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+            ${getAvatarHtml(user, 48)}
+            <div>
+                <h4 style="margin: 0; font-size: 0.95rem; color: #111827;">${user.username}</h4>
+                <p style="margin: 0; font-size: 0.8rem; color: #6b7280;">Tap to view chat</p>
+            </div>
+        </div>`;
+    }).join('');
+    lucide.createIcons();
+}
+
+async function openChatWithUser(userId, username, avatarUrl) {
+    currentChatUserId = userId;
+    
+    document.getElementById('chat-header-name').innerText = username;
+    document.getElementById('chat-header-status').innerText = "Connected";
+    
+    const avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        : `<div style="width: 100%; height: 100%; border-radius: 50%; background: ${getColorForUsername(username)}; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600;">${username.charAt(0).toUpperCase()}</div>`;
+    
+    document.getElementById('chat-header-avatar').innerHTML = avatarHtml;
+    document.getElementById('chat-input-area').style.display = 'flex';
+    
+    loadChatMessages(userId);
+}
+
+async function loadChatMessages(otherUserId) {
+    const currentUserId = localStorage.getItem('currentUserId');
+    const chatArea = document.getElementById('chat-messages-area');
+    chatArea.innerHTML = '<p style="text-align:center; color:#6b7280; margin-top: 20px;">Loading messages...</p>';
+    
+    // Fetch from the 'messages' table
+    const { data: messages } = await supabaseClient
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
+        .order('created_at', { ascending: true });
+        
+    chatArea.innerHTML = '';
+    
+    if (!messages || messages.length === 0) {
+        chatArea.innerHTML = '<p style="text-align:center; color:#6b7280; margin-top: auto; margin-bottom: auto; font-size: 0.9rem; background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); align-self: center;">Say hi to start the swap! 👋</p>';
+        return;
+    }
+    
+    messages.forEach(msg => {
+        const isSender = msg.sender_id == currentUserId;
+        chatArea.innerHTML += createMessageHtml(msg.content, isSender);
+    });
+    
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function createMessageHtml(content, isSender) {
+    const align = isSender ? 'align-self: flex-end;' : 'align-self: flex-start;';
+    const bg = isSender ? 'background: #dcfce7; border: 1px solid #bbf7d0;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
+    const radius = isSender ? 'border-radius: 12px 12px 0 12px;' : 'border-radius: 12px 12px 12px 0;';
+    
+    return `
+        <div style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827;">
+            ${content}
+        </div>
+    `;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const content = input.value.trim();
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    if (!content || !currentChatUserId) return;
+    
+    input.value = ''; // clear immediately
+    
+    // Optimistic UI update
+    const chatArea = document.getElementById('chat-messages-area');
+    if (chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
+    chatArea.innerHTML += createMessageHtml(content, true);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    
+    // Insert into DB
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId,
+        receiver_id: currentChatUserId,
+        content: content
+    }]);
+}
+
+
+// ==========================================
+// 6. CONNECTIONS & SEARCH SYSTEM
 // ==========================================
 async function searchUsers(event) {
     const query = event.target.value.trim(); const list = document.getElementById('connections-list'); const currentUserId = localStorage.getItem('currentUserId');
@@ -431,7 +544,7 @@ function renderConnectionList(users, title, connectionMap = {}) {
     const list = document.getElementById('connections-list'); let html = `<p style="font-size: 0.85rem; font-weight: 600; color: #4b5563; margin: 0 0 10px 0;">${title}</p>`;
     html += users.map(u => {
         const status = connectionMap[u.id]; let actionHtml = '';
-        if (status === 'accepted') actionHtml = `<span style="font-size: 0.75rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Connected</span>`;
+        if (status === 'accepted') actionHtml = `<button onclick="openMessagesPage()" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Message</button>`;
         else if (status === 'pending_sent') actionHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-weight: 500; background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">Requested</span>`;
         else if (status === 'pending_received') actionHtml = `<button onclick="openRequestsModal()" class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;">Review</button>`;
         else actionHtml = `<button onclick="connectWithUser(${u.id})" class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;">Connect</button>`;
@@ -483,7 +596,7 @@ async function removeConnection(connectionId) { await supabaseClient.from('conne
 
 
 // ==========================================
-// 6. PRIVATE PROFILE PAGE LOGIC
+// 7. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
 async function loadUserProfile() {
     const userId = localStorage.getItem('currentUserId'); if (!userId) { window.location.href = 'auth.html'; return; }
@@ -577,7 +690,7 @@ async function removeWantedSkill(skillToRemove) {
 }
 
 // ==========================================
-// 7. PUBLIC VIEW PROFILE LOGIC 
+// 8. PUBLIC VIEW PROFILE LOGIC 
 // ==========================================
 async function loadPublicProfile() {
     const urlParams = new URLSearchParams(window.location.search); const targetUserId = urlParams.get('id'); if (!targetUserId) { window.location.href = 'index.html'; return; }
@@ -619,7 +732,7 @@ function renderPublicCertificatesUI() {
 function showMorePublicCertificates() { visibleCertsCount += 2; renderPublicCertificatesUI(); }
 
 // ==========================================
-// 8. IMAGE UPLOAD & PDF CROP LOGIC
+// 9. IMAGE UPLOAD & PDF CROP LOGIC
 // ==========================================
 let cropper = null; let currentImageField = ''; 
 function openImageEditor(fieldName) { currentImageField = fieldName; document.getElementById('image-modal-title').innerText = fieldName === 'avatar_url' ? 'Update Profile Picture' : 'Update Banner'; document.getElementById('image-editor-modal').style.display = 'flex'; document.getElementById('image-source-options').style.display = 'block'; document.getElementById('cropper-container').style.display = 'none'; document.getElementById('save-cropped-btn').style.display = 'none'; document.getElementById('link-upload-input').value = ''; if(cropper) { cropper.destroy(); cropper = null; } }
@@ -638,7 +751,7 @@ async function saveCroppedImage() {
 }
 
 // ==========================================
-// 9. CERTIFICATES ENGINE 
+// 10. CERTIFICATES ENGINE 
 // ==========================================
 let allCertificates = []; let visibleCertsCount = 2; 
 async function loadCertificates() {
@@ -695,57 +808,26 @@ function closeAllCertsModal() { document.getElementById('all-certs-modal').style
 
 
 // ==========================================
-// 10. RUN ON PAGE LOAD
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    loadSkills();
-    updateUIForUser();
-    updateRequestsBadge();
-    
-    // NEW: Listen to scrolling to update arrow visibility
-    const track = document.getElementById('skills-carousel');
-    if (track) {
-        track.addEventListener('scroll', updateCarouselArrows);
-        window.addEventListener('resize', updateCarouselArrows);
-    }
-    
-    if (document.getElementById('profile-page-name')) {
-        loadUserProfile();
-        loadCertificates(); 
-    }
-
-    if (window.location.pathname.includes('view-profile.html')) {
-        loadPublicProfile();
-        loadPublicCertificates();
-    }
-});
-
-// ==========================================
-// 11. REALTIME LISTENERS & PAGE LOAD
+// 11. PAGE LOAD & REALTIME LISTENERS
 // ==========================================
 
 function setupRealtimeListeners() {
     const currentUserId = localStorage.getItem('currentUserId');
     console.log("Attempting to connect to Supabase Realtime...");
 
-    // We use ONE master channel to listen to the entire 'public' schema
     supabaseClient
         .channel('master-db-channel')
         .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
-            
             console.log("🔥 REALTIME UPDATE RECEIVED:", payload.table, payload.event);
-
             const table = payload.table;
             const data = payload.new || payload.old;
 
-            // 1. SKILLS TABLE CHANGES
             if (table === 'skills') {
-                if (document.getElementById('skills-carousel')) loadSkills();
+                if (document.getElementById('skills-grid')) loadSkills();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
             }
 
-            // 2. CONNECTIONS TABLE CHANGES
             if (table === 'connections' && currentUserId) {
                 if (data && (data.requester_id == currentUserId || data.receiver_id == currentUserId)) {
                     updateRequestsBadge();
@@ -757,15 +839,13 @@ function setupRealtimeListeners() {
                 }
             }
 
-            // 3. PROFILES TABLE CHANGES
             if (table === 'profiles') {
                 if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-carousel')) loadSkills();
+                if (document.getElementById('skills-grid')) loadSkills();
             }
 
-            // 4. APP_USERS TABLE CHANGES
             if (table === 'app_users') {
                 if (payload.new && payload.new.id == currentUserId) {
                     localStorage.setItem('currentUser', payload.new.username);
@@ -773,7 +853,32 @@ function setupRealtimeListeners() {
                 }
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
-                if (document.getElementById('skills-carousel')) loadSkills();
+                if (document.getElementById('skills-grid')) loadSkills();
+            }
+
+            // --- NEW: MESSAGE REALTIME LISTENER ---
+            if (table === 'messages' && currentUserId) {
+                if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
+                    // If we are actively chatting with the sender
+                    if (currentChatUserId && (data.sender_id == currentChatUserId || data.receiver_id == currentChatUserId)) {
+                        // Append incoming message visually (outgoing is handled optimistically on send)
+                        if (payload.eventType === 'INSERT' && data.sender_id == currentChatUserId) {
+                            const chatArea = document.getElementById('chat-messages-area');
+                            if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
+                            if (chatArea) {
+                                chatArea.innerHTML += createMessageHtml(data.content, false);
+                                chatArea.scrollTop = chatArea.scrollHeight;
+                            }
+                        }
+                    } else if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
+                        // We received a message from someone else, show the badge!
+                        const badge = document.getElementById('messages-badge');
+                        if (badge && document.getElementById('messages-modal').style.display !== 'flex') {
+                            badge.style.display = 'flex';
+                            badge.innerText = parseInt(badge.innerText || 0) + 1;
+                        }
+                    }
+                }
             }
         })
         .subscribe((status) => {
@@ -782,6 +887,32 @@ function setupRealtimeListeners() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // We already call loadSkills() in the previous block, but this ensures setupRealtimeListeners fires
+    loadSkills();
+    updateUIForUser();
+    updateRequestsBadge();
+    
     setupRealtimeListeners();
+    
+    // Attach event listeners for the messaging input
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-msg-btn');
+    
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendChatMessage);
+    }
+    if (chatInput) {
+        chatInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendChatMessage();
+        });
+    }
+
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+        loadCertificates(); 
+    }
+
+    if (window.location.pathname.includes('view-profile.html')) {
+        loadPublicProfile();
+        loadPublicCertificates();
+    }
 });
