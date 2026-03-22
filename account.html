@@ -39,7 +39,7 @@
                     <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
                         
                         <div style="position: relative;">
-                            <button class="icon-btn" onclick="openMessagesPage()" title="Messages" style="padding: 6px;">
+                            <button class="icon-btn" onclick="window.location.href='messages.html'" title="Messages" style="padding: 6px;">
                                 <i data-lucide="message-square-text" style="width: 22px; height: 22px; color: #4b5563;"></i>
                                 <span id="messages-badge" style="position: absolute; top: -5px; right: -5px; background-color: #ef4444; color: white; font-size: 0.7rem; font-weight: 700; border-radius: 50%; width: 16px; height: 16px; display: none; align-items: center; justify-content: center;">0</span>
                             </button>
@@ -60,7 +60,6 @@
                                         Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
                                     </button>
                                 </div>
-
                                 <div id="connections-list" style="margin-top: 10px; max-height: 250px; overflow-y: auto;"></div>
                             </div>
                         </div>
@@ -176,57 +175,6 @@
             </div>
         </div>
     </main>
-
-    <div id="messages-modal" class="modal-overlay">
-        <div class="modal-content" style="max-width: 900px; width: 95%; height: 80vh; padding: 0; display: flex; overflow: hidden; border-radius: 12px; background: #ffffff;">
-            
-            <div style="width: 320px; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; background: #ffffff; flex-shrink: 0;">
-                <div style="padding: 15px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f0f2f5;">
-                    <h3 style="margin: 0; font-size: 1.1rem; color: #111827;">Messages</h3>
-                    <button onclick="closeMessagesPage()" class="icon-btn" style="color: #6b7280; padding: 4px;"><i data-lucide="x" style="width: 20px; height: 20px;"></i></button>
-                </div>
-                <div style="padding: 10px; background: #ffffff; border-bottom: 1px solid #e5e7eb;">
-                    <div style="position: relative; display: flex; align-items: center;">
-                        <i data-lucide="search" style="position: absolute; left: 10px; width: 16px; height: 16px; color: #9ca3af;"></i>
-                        <input type="text" placeholder="Search connected users" style="width: 100%; padding: 8px 12px 8px 35px; border: none; border-radius: 8px; background: #f0f2f5; outline: none; font-family: inherit;">
-                    </div>
-                </div>
-                <div id="chat-list" style="flex: 1; overflow-y: auto;">
-                    <div style="padding: 20px; text-align: center; color: #6b7280; font-size: 0.9rem;">Loading chats...</div>
-                </div>
-            </div>
-
-            <div style="flex: 1; display: flex; flex-direction: column; background: #efeae2; position: relative;">
-                
-                <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; gap: 12px; height: 65px; box-sizing: border-box;">
-                    <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
-                        <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
-                    </div>
-                    <div style="flex: 1;">
-                        <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Chat</h4>
-                        <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
-                    </div>
-                </div>
-                
-                <div id="chat-messages-area" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
-                    <div style="text-align: center; color: #6b7280; margin-top: auto; margin-bottom: auto;">
-                        <div style="background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                            <i data-lucide="message-circle" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 10px;"></i>
-                            <p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: #374151;">Your Messages</p>
-                            <p style="margin: 5px 0 0 0; font-size: 0.85rem;">Send private messages to your connections.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="chat-input-area" style="padding: 10px 15px; background: #f0f2f5; display: none; align-items: center; gap: 10px;">
-                    <button class="icon-btn" style="color: #6b7280; padding: 8px;"><i data-lucide="paperclip" style="width: 22px; height: 22px;"></i></button>
-                    <input type="text" id="chat-input" placeholder="Type a message" style="flex: 1; padding: 12px 15px; border: none; border-radius: 8px; outline: none; font-size: 0.95rem; font-family: inherit;">
-                    <button id="send-msg-btn" class="icon-btn" style="color: #ffffff; background: #8b5cf6; padding: 10px; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><i data-lucide="send" style="width: 18px; height: 18px; margin-left: -2px;"></i></button>
-                </div>
-            </div>
-            
-        </div>
-    </div>
 
     <div id="custom-edit-modal" class="modal-overlay">
         <div class="modal-content">
