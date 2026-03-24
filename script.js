@@ -24,6 +24,35 @@ function getColorForUsername(username) {
 // ==========================================
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
+
+// --- Unified Smooth Scroll Engine ---
+let carouselTargetScroll = 0;
+let isCarouselAnimating = false;
+
+function animateCarouselScroll(track) {
+    if (!isCarouselAnimating) {
+        isCarouselAnimating = true;
+        track.style.scrollBehavior = 'auto'; // Ensure JS controls the scroll smoothly
+        
+        const animate = () => {
+            const distance = carouselTargetScroll - track.scrollLeft;
+            
+            // Snap and stop if close enough
+            if (Math.abs(distance) < 1) {
+                track.scrollLeft = carouselTargetScroll;
+                isCarouselAnimating = false;
+                if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
+                return;
+            }
+            
+            // Lerp (smooth approach)
+            track.scrollLeft += distance * 0.15;
+            requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+    }
+}
+
 async function loadSkills() {
     const carouselTrack = document.getElementById('skills-carousel');
     if (!carouselTrack) return; 
@@ -82,9 +111,22 @@ async function loadSkills() {
 window.scrollCarousel = function(direction) {
     const track = document.getElementById('skills-carousel');
     if (!track) return;
+    
+    if (!isCarouselAnimating) {
+        carouselTargetScroll = track.scrollLeft;
+    }
+    
     const scrollAmount = 320 * 2;
-    if (direction === 'left') track.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
-    else track.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    const maxScroll = track.scrollWidth - track.clientWidth;
+    
+    if (direction === 'left') {
+        carouselTargetScroll -= scrollAmount;
+    } else {
+        carouselTargetScroll += scrollAmount;
+    }
+    
+    carouselTargetScroll = Math.max(0, Math.min(carouselTargetScroll, maxScroll));
+    animateCarouselScroll(track);
 }
 
 window.updateCarouselArrows = function() {
@@ -388,7 +430,6 @@ async function initMessagesPage() {
     
     loadChatConnections();
     
-    // Attach listener to input 
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-msg-btn');
     if (sendBtn) sendBtn.addEventListener('click', sendChatMessage);
@@ -946,52 +987,21 @@ document.addEventListener('DOMContentLoaded', () => {
         track.addEventListener('scroll', updateCarouselArrows);
         window.addEventListener('resize', updateCarouselArrows);
         
-        // Custom Smooth Scroll Variables
-        let targetScroll = 0;
-        let isAnimating = false;
-
+        // Horizontal scroll with mouse wheel (hover to scroll feature)
         track.addEventListener('wheel', (e) => {
             const isScrollable = track.scrollWidth > track.clientWidth;
             if (isScrollable && e.deltaY !== 0) {
-                e.preventDefault(); // Stop page from scrolling down vertically
+                e.preventDefault(); 
                 
-                // If not currently animating, start from current scroll position
-                if (!isAnimating) {
-                    targetScroll = track.scrollLeft;
-                    track.style.scrollBehavior = 'auto'; // Turn off CSS smooth scroll temporarily so JS can control it smoothly
+                if (!isCarouselAnimating) {
+                    carouselTargetScroll = track.scrollLeft;
                 }
                 
-                // Accumulate the scroll distance (adjust 1.5 for speed)
-                targetScroll += e.deltaY * 1.5;
-                
-                // Clamp the target to min/max scroll bounds
+                carouselTargetScroll += e.deltaY * 1.5;
                 const maxScroll = track.scrollWidth - track.clientWidth;
-                targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+                carouselTargetScroll = Math.max(0, Math.min(carouselTargetScroll, maxScroll));
 
-                // Start the animation loop if it's not already running
-                if (!isAnimating) {
-                    isAnimating = true;
-                    
-                    const animateScroll = () => {
-                        const distance = targetScroll - track.scrollLeft;
-                        
-                        // If we are close to the target, snap and stop
-                        if (Math.abs(distance) < 1) {
-                            track.scrollLeft = targetScroll;
-                            isAnimating = false;
-                            track.style.scrollBehavior = 'smooth'; // Restore CSS smooth scroll for the arrow buttons
-                            updateCarouselArrows();
-                            return;
-                        }
-                        
-                        // Easing function (lerp): move 15% of the remaining distance per frame
-                        track.scrollLeft += distance * 0.15;
-                        
-                        requestAnimationFrame(animateScroll);
-                    };
-                    
-                    requestAnimationFrame(animateScroll);
-                }
+                animateCarouselScroll(track);
             }
         }, { passive: false });
     }
