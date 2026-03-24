@@ -82,10 +82,6 @@ async function loadSkills() {
 window.scrollCarousel = function(direction) {
     const track = document.getElementById('skills-carousel');
     if (!track) return;
-    
-    // Ensure smooth behavior is on when clicking arrows
-    track.style.scrollBehavior = 'smooth';
-    
     const scrollAmount = 320 * 2;
     if (direction === 'left') track.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
     else track.scrollBy({ left: scrollAmount, behavior: 'smooth' });
@@ -399,7 +395,6 @@ async function initMessagesPage() {
     if (chatInput) chatInput.addEventListener('keypress', function (e) { if (e.key === 'Enter') sendChatMessage(); });
 }
 
-// FETCHES AND DISPLAYS MESSAGE PREVIEWS IN SIDEBAR
 async function loadChatConnections() {
     const currentUserId = localStorage.getItem('currentUserId');
     const chatList = document.getElementById('chat-list');
@@ -418,7 +413,6 @@ async function loadChatConnections() {
     
     const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', otherUserIds);
     
-    // FETCH LATEST MESSAGES TO DISPLAY PREVIEWS
     const { data: messages } = await supabaseClient
         .from('messages')
         .select('*')
@@ -431,21 +425,15 @@ async function loadChatConnections() {
         const avatarStr = avatarUrl ? `'${avatarUrl}'` : null;
         const activeBg = currentChatUserId == user.id ? 'background: #f3f4f6;' : '';
 
-        // Find the most recent message between you and this specific user
         let lastMsgText = "Tap to view chat";
         let isUnread = false;
         
         if (messages) {
             const lastMsg = messages.find(m => (m.sender_id == user.id && m.receiver_id == currentUserId) || (m.sender_id == currentUserId && m.receiver_id == user.id));
             if (lastMsg) {
-                // If you sent it, add "You: " to the front
                 const prefix = lastMsg.sender_id == currentUserId ? "You: " : "";
                 lastMsgText = prefix + lastMsg.content;
-                
-                // If they sent it and you haven't read it yet, flag it
-                if (lastMsg.sender_id == user.id && !lastMsg.is_read) {
-                    isUnread = true;
-                }
+                if (lastMsg.sender_id == user.id && !lastMsg.is_read) isUnread = true;
             }
         }
 
@@ -469,7 +457,6 @@ async function loadChatConnections() {
 async function openChatWithUser(userId, username, avatarUrl) {
     currentChatUserId = userId;
     
-    // Update Header
     document.getElementById('chat-header-name').innerText = username;
     document.getElementById('chat-header-status').innerText = "Connected";
     const avatarHtml = avatarUrl 
@@ -479,11 +466,9 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
-    // Immediately mark unread messages from this user as READ
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
-    // Reload sidebar to highlight active user and remove unread dots
     loadChatConnections();
     updateMessagesBadge();
     loadChatMessages(userId);
@@ -538,23 +523,19 @@ async function sendChatMessage() {
     chatArea.innerHTML += createMessageHtml(content, true);
     chatArea.scrollTop = chatArea.scrollHeight;
     
-    // Insert into DB
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId,
         receiver_id: currentChatUserId,
         content: content
     }]);
 
-    // Update the sidebar so it immediately shows "You: [message]"
     loadChatConnections();
 }
 
-// Function to dynamically count UNREAD messages
 async function updateMessagesBadge() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) return;
 
-    // Fetch the total count of messages where we are the receiver and is_read is false
     const { count } = await supabaseClient
         .from('messages')
         .select('*', { count: 'exact', head: true })
@@ -856,3 +837,174 @@ function renameCertificate(id, currentTitle) {
     document.getElementById('modal-save-btn').onclick = async function() { const newTitle = document.getElementById('modal-input').value.trim(); closeModal(); if (!newTitle || newTitle === currentTitle) return; await supabaseClient.from('certificates').update({ title: newTitle }).eq('id', id); loadCertificates(); };
 }
 async function deleteCertificate(id) { await supabaseClient.from('certificates').delete().eq('id', id); loadCertificates(); }
+
+function openAllCertsModal() {
+    const modal = document.getElementById('all-certs-modal'); const grid = document.getElementById('light-cert-grid'); const isPublicView = window.location.pathname.includes('view-profile.html');
+    grid.innerHTML = allCertificates.map(cert => `<div class="modal-cert-item" ${isPublicView ? '' : `data-id="${cert.id}" style="cursor: grab;"`} style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">${isPublicView ? '' : `<div style="position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border-radius: 4px; padding: 2px; z-index: 5;"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px; color: #6b7280;"></i></div>`}<a href="${cert.pdf_url}" target="_blank" style="display: block;"><img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a><div style="padding: 12px; font-size: 0.85rem; text-align: center; color: #1f2937; font-weight: 500;">${cert.title}</div></div>`).join('');
+    modal.style.display = 'flex'; lucide.createIcons(); 
+    if (!isPublicView) {
+        if (window.modalCertSortable) window.modalCertSortable.destroy();
+        window.modalCertSortable = new Sortable(grid, { animation: 150, ghostClass: 'sortable-ghost', forceFallback: true, fallbackOnBody: true, onEnd: async function (evt) { const movedItem = allCertificates.splice(evt.oldIndex, 1)[0]; allCertificates.splice(evt.newIndex, 0, movedItem); for (let i = 0; i < allCertificates.length; i++) { allCertificates[i].display_order = i; await supabaseClient.from('certificates').update({ display_order: i }).eq('id', allCertificates[i].id); } renderCertificatesUI(); } });
+    }
+}
+function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
+
+
+// ==========================================
+// 11. PAGE LOAD & REALTIME LISTENERS
+// ==========================================
+function setupRealtimeListeners() {
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    supabaseClient
+        .channel('master-db-channel')
+        .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+            const table = payload.table;
+            const data = payload.new || payload.old;
+
+            if (table === 'skills') {
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+            }
+
+            if (table === 'connections' && currentUserId) {
+                if (data && (data.requester_id == currentUserId || data.receiver_id == currentUserId)) {
+                    updateRequestsBadge();
+                    loadTopConnections();
+                    const searchInput = document.getElementById('connection-search');
+                    if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
+                    if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') openRequestsModal();
+                    if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') openManageConnectionsModal();
+                }
+            }
+
+            if (table === 'profiles') {
+                if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+            }
+
+            if (table === 'app_users') {
+                if (payload.new && payload.new.id == currentUserId) {
+                    localStorage.setItem('currentUser', payload.new.username);
+                    updateUIForUser();
+                }
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+            }
+
+            // MESSAGING REALTIME
+            if (table === 'messages' && currentUserId) {
+                if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
+                    
+                    if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
+                        if (currentChatUserId && data.sender_id == currentChatUserId) {
+                            // We are actively chatting with them! Instantly mark it as read.
+                            supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
+                            
+                            // Show message visually
+                            const chatArea = document.getElementById('chat-messages-area');
+                            if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
+                            if (chatArea) {
+                                chatArea.innerHTML += createMessageHtml(data.content, false);
+                                chatArea.scrollTop = chatArea.scrollHeight;
+                            }
+                            
+                            // Update sidebar immediately to show latest message preview
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                        } else {
+                            // We are NOT actively chatting with them. Increment the notification badge!
+                            updateMessagesBadge();
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                        }
+                    } else if (data.sender_id == currentUserId && payload.eventType === 'INSERT') {
+                         // We sent a message, update sidebar to show "You: message"
+                         if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                    }
+                }
+            }
+        })
+        .subscribe();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSkills();
+    updateUIForUser();
+    updateRequestsBadge();
+    updateMessagesBadge();
+    
+    setupRealtimeListeners();
+
+    // ==========================================
+    // NEW: ADDED SCROLL & WHEEL EVENT LISTENERS
+    // ==========================================
+    const track = document.getElementById('skills-carousel');
+    if (track) {
+        track.addEventListener('scroll', updateCarouselArrows);
+        window.addEventListener('resize', updateCarouselArrows);
+        
+        // Custom Smooth Scroll Variables
+        let targetScroll = 0;
+        let isAnimating = false;
+
+        track.addEventListener('wheel', (e) => {
+            const isScrollable = track.scrollWidth > track.clientWidth;
+            if (isScrollable && e.deltaY !== 0) {
+                e.preventDefault(); // Stop page from scrolling down vertically
+                
+                // If not currently animating, start from current scroll position
+                if (!isAnimating) {
+                    targetScroll = track.scrollLeft;
+                    track.style.scrollBehavior = 'auto'; // Turn off CSS smooth scroll temporarily so JS can control it smoothly
+                }
+                
+                // Accumulate the scroll distance (adjust 1.5 for speed)
+                targetScroll += e.deltaY * 1.5;
+                
+                // Clamp the target to min/max scroll bounds
+                const maxScroll = track.scrollWidth - track.clientWidth;
+                targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+
+                // Start the animation loop if it's not already running
+                if (!isAnimating) {
+                    isAnimating = true;
+                    
+                    const animateScroll = () => {
+                        const distance = targetScroll - track.scrollLeft;
+                        
+                        // If we are close to the target, snap and stop
+                        if (Math.abs(distance) < 1) {
+                            track.scrollLeft = targetScroll;
+                            isAnimating = false;
+                            track.style.scrollBehavior = 'smooth'; // Restore CSS smooth scroll for the arrow buttons
+                            updateCarouselArrows();
+                            return;
+                        }
+                        
+                        // Easing function (lerp): move 15% of the remaining distance per frame
+                        track.scrollLeft += distance * 0.15;
+                        
+                        requestAnimationFrame(animateScroll);
+                    };
+                    
+                    requestAnimationFrame(animateScroll);
+                }
+            }
+        }, { passive: false });
+    }
+    
+    if (window.location.pathname.includes('messages.html')) {
+        initMessagesPage();
+    }
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+        loadCertificates(); 
+    }
+    if (window.location.pathname.includes('view-profile.html')) {
+        loadPublicProfile();
+        loadPublicCertificates();
+    }
+});
