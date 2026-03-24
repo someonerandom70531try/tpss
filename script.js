@@ -92,6 +92,7 @@ window.updateCarouselArrows = function() {
     const leftBtn = document.getElementById('scroll-left-btn');
     const rightBtn = document.getElementById('scroll-right-btn');
     if (!track || !leftBtn || !rightBtn) return;
+    
     const isScrollable = track.scrollWidth > track.clientWidth;
     if (isScrollable) {
         leftBtn.style.display = track.scrollLeft > 0 ? 'flex' : 'none';
@@ -215,7 +216,7 @@ async function connectWithUserFromModal(receiverId, skillId) {
     openSkillDetailModal(skillId); // Refresh modal instantly
 }
 
-// --- POSTING A SKILL WITH WARNING LOGIC ---
+// --- POSTING A SKILL ---
 async function checkWantedSkillsBeforePosting() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = "auth.html"; return; }
@@ -238,7 +239,6 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-modal').style.display = 'flex';
 
     const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
-    
     certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
     if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
 
@@ -246,9 +246,7 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-tag').value = '';
     document.getElementById('post-skill-desc').value = '';
 }
-
 function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
-
 async function submitPostSkill() {
     const userId = localStorage.getItem('currentUserId');
     const name = document.getElementById('post-skill-name').value.trim();
@@ -259,39 +257,26 @@ async function submitPostSkill() {
     if (!name || !tag || !desc) return; 
 
     const payload = { user_id: userId, title: name, category: tag, description: desc };
-    
-    // Parse integer so database accepts the foreign key
-    if (certId && certId !== "") {
-        payload.certificate_id = parseInt(certId); 
-    }
+    if (certId && certId !== "") payload.certificate_id = parseInt(certId); 
 
-    // Attempt to insert the post
     const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
-    
-    // If Supabase rejects it, log the exact reason to the console and stop
-    if (insertError) {
-        console.error("Database Error Rejection:", insertError.message, insertError.details);
-        return; 
-    }
+    if (insertError) return; 
 
-    // Cross-reference with 'Skills I Have'
     const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
     let currentSkills = profile && profile.profile_skills ? profile.profile_skills.split(',').map(s => s.trim()) : [];
     
-    const exists = currentSkills.some(s => s.toLowerCase() === name.toLowerCase());
-    if (!exists) {
+    if (!currentSkills.some(s => s.toLowerCase() === name.toLowerCase())) {
         currentSkills.unshift(name);
         const updatedStr = currentSkills.filter(s => s !== "").join(', ');
         await supabaseClient.from('profiles').update({ profile_skills: updatedStr }).eq('user_id', userId);
     }
-
     closePostSkillModal();
     loadSkills(); 
 }
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC (SINGLE FORM)
+// 3. AUTHENTICATION LOGIC
 // ==========================================
 let isLoginMode = true;
 
@@ -377,7 +362,6 @@ function toggleConnectionsDropdown(event) {
     if (userDropdown) userDropdown.classList.remove('show'); 
     if (connDropdown) { connDropdown.classList.toggle('show'); if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') loadTopConnections(); }
 }
-
 window.onclick = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
@@ -968,6 +952,24 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMessagesBadge();
     
     setupRealtimeListeners();
+
+    // ==========================================
+    // NEW: ADDED SCROLL & WHEEL EVENT LISTENERS
+    // ==========================================
+    const track = document.getElementById('skills-carousel');
+    if (track) {
+        track.addEventListener('scroll', updateCarouselArrows);
+        window.addEventListener('resize', updateCarouselArrows);
+        
+        // Horizontal scroll with mouse wheel (hover to scroll feature)
+        track.addEventListener('wheel', (e) => {
+            const isScrollable = track.scrollWidth > track.clientWidth;
+            if (isScrollable && e.deltaY !== 0) {
+                e.preventDefault(); // Stop page from scrolling down
+                track.scrollLeft += e.deltaY * 1.5; 
+            }
+        }, { passive: false });
+    }
     
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
