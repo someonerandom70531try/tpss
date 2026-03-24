@@ -65,19 +65,21 @@ body {
 }
 .search-box {
     margin: 30px auto;
-    max-width: 500px;
+    max-width: 550px; /* Slightly wider to fit the new button */
     display: flex;
     align-items: center;
     background: white;
     border: 1px solid #d1d5db;
     border-radius: 8px;
-    padding: 5px 10px;
+    padding: 6px 6px 6px 12px; /* Adjusted padding */
 }
 .search-box input {
     flex: 1;
     border: none;
-    padding: 10px;
+    padding: 10px 15px;
     outline: none;
+    font-family: inherit;
+    font-size: 0.95rem;
 }
 
 /* Avatar & Dropdown */
