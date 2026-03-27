@@ -25,27 +25,22 @@ function getColorForUsername(username) {
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
 
-// --- Unified Smooth Scroll Engine ---
 let carouselTargetScroll = 0;
 let isCarouselAnimating = false;
 
 function animateCarouselScroll(track) {
     if (!isCarouselAnimating) {
         isCarouselAnimating = true;
-        track.style.scrollBehavior = 'auto'; // Ensure JS controls the scroll smoothly
+        track.style.scrollBehavior = 'auto'; 
         
         const animate = () => {
             const distance = carouselTargetScroll - track.scrollLeft;
-            
-            // Snap and stop if close enough
             if (Math.abs(distance) < 1) {
                 track.scrollLeft = carouselTargetScroll;
                 isCarouselAnimating = false;
                 if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
                 return;
             }
-            
-            // Lerp (smooth approach)
             track.scrollLeft += distance * 0.15;
             requestAnimationFrame(animate);
         };
@@ -318,9 +313,63 @@ async function submitPostSkill() {
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC
+// 3. AUTHENTICATION LOGIC (WITH GOOGLE BRIDGE)
 // ==========================================
 let isLoginMode = true;
+
+// Trigger Supabase's native Google OAuth
+window.signInWithGoogle = async function() {
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.origin + window.location.pathname
+        }
+    });
+    if (error) showAuthMessage("Error connecting to Google.", true);
+}
+
+// The "Bridge": This catches the Google redirect, checks the custom app_users table, and syncs them
+window.checkOAuthSession = async function() {
+    // This tells Supabase to read the #access_token from the URL if it exists
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    
+    if (session && session.user) {
+        const btn = document.getElementById('auth-submit-btn');
+        if(btn) btn.innerText = "Connecting Google...";
+        
+        const email = session.user.email;
+        let name = session.user.user_metadata.full_name || session.user.user_metadata.name || email.split('@')[0];
+
+        // 1. Check if user already exists in our CUSTOM app_users table
+        const { data: existingUsers } = await supabaseClient.from('app_users').select('*').eq('email', email);
+
+        let localUser;
+        if (existingUsers && existingUsers.length > 0) {
+            localUser = existingUsers[0];
+        } else {
+            // 2. User is new! Create their custom app_users profile
+            const uniqueUsername = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
+            
+            const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ 
+                email: email, 
+                username: uniqueUsername, 
+                password: 'google_oauth_user_' + Date.now() // Dummy password for custom table
+            }]).select().single();
+            
+            if(newUser) {
+                await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
+                localUser = newUser;
+            }
+        }
+
+        // 3. Log them in normally
+        if (localUser) {
+            localStorage.setItem('currentUserId', localUser.id);
+            localStorage.setItem('currentUser', localUser.username);
+            window.location.href = "index.html";
+        }
+    }
+}
 
 function toggleAuthMode(event) {
     if (event) event.preventDefault();
@@ -410,7 +459,14 @@ window.onclick = function(event) {
     if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown')) connDropdown.classList.remove('show');
     document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
 }
-function handleLogout() { localStorage.removeItem('currentUserId'); localStorage.removeItem('currentUser'); window.location.href = "index.html"; }
+
+// Clears the standard login AND the Supabase Google session
+async function handleLogout() { 
+    localStorage.removeItem('currentUserId'); 
+    localStorage.removeItem('currentUser'); 
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html"; 
+}
 
 
 // ==========================================
@@ -943,26 +999,19 @@ function setupRealtimeListeners() {
                     
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
-                            // We are actively chatting with them! Instantly mark it as read.
                             supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
-                            
-                            // Show message visually
                             const chatArea = document.getElementById('chat-messages-area');
                             if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
                             if (chatArea) {
                                 chatArea.innerHTML += createMessageHtml(data.content, false);
                                 chatArea.scrollTop = chatArea.scrollHeight;
                             }
-                            
-                            // Update sidebar immediately to show latest message preview
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         } else {
-                            // We are NOT actively chatting with them. Increment the notification badge!
                             updateMessagesBadge();
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         }
                     } else if (data.sender_id == currentUserId && payload.eventType === 'INSERT') {
-                         // We sent a message, update sidebar to show "You: message"
                          if (window.location.pathname.includes('messages.html')) loadChatConnections();
                     }
                 }
@@ -979,15 +1028,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     setupRealtimeListeners();
 
-    // ==========================================
-    // NEW: ADDED SCROLL & WHEEL EVENT LISTENERS
-    // ==========================================
     const track = document.getElementById('skills-carousel');
     if (track) {
         track.addEventListener('scroll', updateCarouselArrows);
         window.addEventListener('resize', updateCarouselArrows);
         
-        // Horizontal scroll with mouse wheel (hover to scroll feature)
         track.addEventListener('wheel', (e) => {
             const isScrollable = track.scrollWidth > track.clientWidth;
             if (isScrollable && e.deltaY !== 0) {
