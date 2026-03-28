@@ -474,6 +474,16 @@ async function handleLogout() {
 // ==========================================
 let currentChatUserId = null;
 
+// Global variables for the right-click menu
+let activeContextMenuMsgId = null;
+let activeContextMenuMsgContent = null;
+
+// Hide the right-click menu if the user clicks anywhere else on the screen
+document.addEventListener('click', () => {
+    const menu = document.getElementById('msg-context-menu');
+    if (menu) menu.style.display = 'none';
+});
+
 async function initMessagesPage() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = 'auth.html'; return; }
@@ -529,7 +539,14 @@ async function loadChatConnections() {
             const lastMsg = messages.find(m => (m.sender_id == user.id && m.receiver_id == currentUserId) || (m.sender_id == currentUserId && m.receiver_id == user.id));
             if (lastMsg) {
                 const prefix = lastMsg.sender_id == currentUserId ? "You: " : "";
-                lastMsgText = prefix + lastMsg.content;
+                
+                // Show if it was a deleted message
+                if (lastMsg.is_deleted) {
+                    lastMsgText = prefix + "🚫 This message was deleted";
+                } else {
+                    lastMsgText = prefix + lastMsg.content;
+                }
+                
                 if (lastMsg.sender_id == user.id && !lastMsg.is_read) isUnread = true;
             }
         }
@@ -563,12 +580,43 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
+    // Show the video call button
+    const videoBtn = document.getElementById('video-call-btn');
+    if (videoBtn) videoBtn.style.display = 'flex';
+    
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
     loadChatConnections();
     updateMessagesBadge();
     loadChatMessages(userId);
+}
+
+// Generate a video call link and send it in the chat
+async function startVideoCall() {
+    if (!currentChatUserId) return;
+    
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    // 1. Create a unique, private room name using both user IDs
+    const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
+    const meetingLink = `https://meet.jit.si/${roomName}`;
+    
+    // 2. Format a clickable HTML message
+    const messageContent = `🎥 I've started a video call! Click here to join: <br><a href="${meetingLink}" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: bold; display: inline-block; margin-top: 5px;">Join Video Meeting</a>`;
+    
+    // 3. Save the message to Supabase
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId,
+        receiver_id: currentChatUserId,
+        content: messageContent
+    }]);
+
+    // 4. Open the meeting instantly for the person who clicked the button
+    window.open(meetingLink, '_blank');
+    
+    // 5. Reload the chat to show the new link
+    loadChatMessages(currentChatUserId);
 }
 
 async function loadChatMessages(otherUserId) {
@@ -585,24 +633,58 @@ async function loadChatMessages(otherUserId) {
     chatArea.innerHTML = '';
     
     if (!messages || messages.length === 0) {
-        chatArea.innerHTML = '<p style="text-align:center; color:#6b7280; margin-top: auto; margin-bottom: auto; font-size: 0.9rem; background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); align-self: center;">Say hi to start the swap! 👋</p>';
+        chatArea.innerHTML = '<div style="text-align: center; color: #6b7280; margin-top: auto; margin-bottom: auto;"><div style="background: rgba(255,255,255,0.8); padding: 15px; border-radius: 8px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"><i data-lucide="message-circle" style="width: 32px; height: 32px; color: #8b5cf6; margin-bottom: 10px;"></i><p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: #374151;">Say hi to start the swap! 👋</p></div></div>';
+        lucide.createIcons();
         return;
     }
     
     messages.forEach(msg => {
-        chatArea.innerHTML += createMessageHtml(msg.content, msg.sender_id == currentUserId);
+        // Pass the full msg object instead of just content
+        chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
     });
+    
     chatArea.scrollTop = chatArea.scrollHeight;
+    lucide.createIcons();
 }
 
-function createMessageHtml(content, isSender) {
+function createMessageHtml(msg, isSender) {
     const align = isSender ? 'align-self: flex-end;' : 'align-self: flex-start;';
-    const bg = isSender ? 'background: #dcfce7; border: 1px solid #bbf7d0;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
+    let bg = isSender ? 'background: #dcfce7; border: 1px solid #bbf7d0;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
     const radius = isSender ? 'border-radius: 12px 12px 0 12px;' : 'border-radius: 12px 12px 12px 0;';
     
+    // Format timestamp (e.g., "16:48")
+    const date = new Date(msg.created_at || Date.now());
+    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let contentHtml = '';
+    let metaHtml = '';
+    let rightClickEvent = '';
+
+    // Handle Soft Deleted Messages
+    if (msg.is_deleted) {
+        contentHtml = `<div style="display: flex; align-items: center; gap: 6px; color: #6b7280; font-style: italic;">
+                        <i data-lucide="ban" style="width: 14px; height: 14px;"></i> This message was deleted
+                       </div>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        bg = isSender ? 'background: #f3f4f6; border: 1px solid #e5e7eb;' : 'background: #f9fafb; border: 1px solid #e5e7eb;';
+    } else {
+        // Normal or Edited Message
+        contentHtml = msg.content;
+        const editedMark = msg.is_edited ? 'Edited ' : '';
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${editedMark}${timeString}</span>`;
+        
+        // ONLY allow right click if the user is the sender
+        if (isSender) {
+            // Clean content to prevent breaking the JS function string
+            const safeContent = msg.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            rightClickEvent = `oncontextmenu="showContextMenu(event, ${msg.id}, '${safeContent}')"`;
+        }
+    }
+    
     return `
-        <div style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827;">
-            ${content}
+        <div ${rightClickEvent} style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827; cursor: ${isSender && !msg.is_deleted ? 'context-menu' : 'default'};">
+            ${contentHtml}
+            ${metaHtml}
         </div>
     `;
 }
@@ -615,18 +697,66 @@ async function sendChatMessage() {
     if (!content || !currentChatUserId) return;
     input.value = ''; 
     
-    const chatArea = document.getElementById('chat-messages-area');
-    if (chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
-    chatArea.innerHTML += createMessageHtml(content, true);
-    chatArea.scrollTop = chatArea.scrollHeight;
-    
-    await supabaseClient.from('messages').insert([{
+    // Insert into DB
+    const { error } = await supabaseClient.from('messages').insert([{
         sender_id: currentUserId,
         receiver_id: currentChatUserId,
         content: content
     }]);
 
+    if (error) {
+        console.error("Error sending message:", error);
+        return;
+    }
+
+    // Reload the chat instantly to show the new message
+    loadChatMessages(currentChatUserId);
     loadChatConnections();
+}
+
+// Right Click Action Handlers
+window.showContextMenu = function(e, msgId, content) {
+    e.preventDefault(); // Stop the default browser right-click menu
+    
+    activeContextMenuMsgId = msgId;
+    activeContextMenuMsgContent = content;
+
+    const menu = document.getElementById('msg-context-menu');
+    if (menu) {
+        menu.style.display = 'block';
+        // Position the menu exactly where the mouse clicked
+        menu.style.left = `${e.pageX}px`;
+        menu.style.top = `${e.pageY}px`;
+    }
+}
+
+window.handleMenuDelete = async function() {
+    if(!activeContextMenuMsgId) return;
+    if(!confirm("Delete this message?")) return;
+    
+    // Soft delete: flip the flag and record the exact timestamp for the 30-day cron job
+    await supabaseClient.from('messages').update({ 
+        is_deleted: true,
+        deleted_at: new Date().toISOString()
+    }).eq('id', activeContextMenuMsgId);
+    
+    loadChatMessages(currentChatUserId);
+    document.getElementById('msg-context-menu').style.display = 'none';
+}
+
+window.handleMenuEdit = async function() {
+    if(!activeContextMenuMsgId) return;
+    const newContent = prompt("Edit your message:", activeContextMenuMsgContent);
+    
+    if (newContent !== null && newContent.trim() !== "" && newContent !== activeContextMenuMsgContent) {
+        await supabaseClient.from('messages').update({ 
+            content: newContent.trim(),
+            is_edited: true 
+        }).eq('id', activeContextMenuMsgId);
+        
+        loadChatMessages(currentChatUserId);
+    }
+    document.getElementById('msg-context-menu').style.display = 'none';
 }
 
 async function updateMessagesBadge() {
@@ -996,21 +1126,25 @@ function setupRealtimeListeners() {
             // MESSAGING REALTIME
             if (table === 'messages' && currentUserId) {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
-                    
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
                             supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
                             const chatArea = document.getElementById('chat-messages-area');
                             if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
                             if (chatArea) {
-                                chatArea.innerHTML += createMessageHtml(data.content, false);
+                                chatArea.innerHTML += createMessageHtml(data, false);
                                 chatArea.scrollTop = chatArea.scrollHeight;
+                                lucide.createIcons();
                             }
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         } else {
                             updateMessagesBadge();
                             if (window.location.pathname.includes('messages.html')) loadChatConnections();
                         }
+                    } else if (payload.eventType === 'UPDATE') {
+                         if (currentChatUserId && (data.sender_id == currentChatUserId || data.receiver_id == currentChatUserId)) {
+                             loadChatMessages(currentChatUserId);
+                         }
                     } else if (data.sender_id == currentUserId && payload.eventType === 'INSERT') {
                          if (window.location.pathname.includes('messages.html')) loadChatConnections();
                     }
