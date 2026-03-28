@@ -79,20 +79,14 @@
 
         <div style="flex: 1; display: flex; flex-direction: column; background: #efeae2; position: relative;">
             
-            <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; justify-content: space-between; height: 65px; box-sizing: border-box;">
-                <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-                    <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
-                        <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
-                    </div>
-                    <div>
-                        <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Messages</h4>
-                        <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
-                    </div>
+            <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; gap: 12px; height: 65px; box-sizing: border-box;">
+                <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
                 </div>
-                
-                <button id="video-call-btn" onclick="startVideoCall()" class="icon-btn" style="display: none; background: #e0e7ff; color: #4f46e5; padding: 8px 15px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; align-items: center; gap: 8px; border: 1px solid #c7d2fe;">
-                    <i data-lucide="video" style="width: 18px; height: 18px;"></i> Video Call
-                </button>
+                <div style="flex: 1;">
+                    <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Messages</h4>
+                    <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
+                </div>
             </div>
             
             <div id="chat-messages-area" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
@@ -112,6 +106,7 @@
         </div>
     </main>
 
+    <!-- UI Modals -->
     <div id="requests-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
             <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
@@ -136,6 +131,19 @@
         </div>
     </div>
 
+    <!-- Edit Message Modal -->
+    <div id="custom-edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title">Edit Message</h3>
+            <textarea id="modal-input" class="modal-input" rows="3" placeholder="Type here..."></textarea>
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" onclick="closeModal()" class="btn-secondary" style="padding: 8px 16px; background: white; border-radius: 6px; cursor: pointer; border: 1px solid #d1d5db;">Cancel</button>
+                <button id="modal-save-btn" class="btn-primary" style="padding: 8px 16px;">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right-Click Message Menu -->
     <div id="msg-context-menu" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 5px 0; min-width: 120px;">
         <button onclick="handleMenuEdit()" style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 15px; background: none; border: none; text-align: left; cursor: pointer; font-size: 0.9rem; color: #374151;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">
             <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Edit
