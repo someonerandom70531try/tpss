@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 3000;
 // AGORA SECURE TOKEN SERVER
 // ==========================================
 // PASTE YOUR AGORA KEYS HERE
-const APP_ID = 'YOUR_APP_ID'; 
-const APP_CERTIFICATE = 'YOUR_APP_CERTIFICATE'; 
+const APP_ID = '8adb28c71a9e40f8905245db411405ff'; 
+const APP_CERTIFICATE = 'cdeb8a23c2bb4d539b52e6fd35e59f33'; 
 
 // This endpoint generates a secure, 2-hour token for the video call
 app.get('/rtcToken', (req, res) => {
