@@ -65,13 +65,13 @@ body {
 }
 .search-box {
     margin: 30px auto;
-    max-width: 550px; /* Slightly wider to fit the new button */
+    max-width: 550px; 
     display: flex;
     align-items: center;
     background: white;
     border: 1px solid #d1d5db;
     border-radius: 8px;
-    padding: 6px 6px 6px 12px; /* Adjusted padding */
+    padding: 6px 6px 6px 12px; 
 }
 .search-box input {
     flex: 1;
@@ -185,7 +185,7 @@ body {
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     overflow: hidden;
-    width: calc(50% - 5px); /* Two columns */
+    width: calc(50% - 5px); 
     display: flex;
     flex-direction: column;
     background: white;
@@ -205,9 +205,8 @@ body {
     text-align: center;
 }
 
-/* Dark Modal mimicking the screenshot */
 .dark-modal-content {
-    background: #1e1e1e; /* Dark background */
+    background: #1e1e1e; 
     padding: 30px;
     border-radius: 10px;
     width: 95%;
@@ -279,32 +278,29 @@ body {
 
 .carousel-container {
     width: 100%;
-    overflow: hidden; /* Hides anything outside the container */
-    padding: 10px 0; /* Gives cards a little breathing room for drop shadows */
+    overflow: hidden; 
+    padding: 10px 0; 
 }
 
 .skills-carousel-track {
     display: flex;
     gap: 20px;
-    overflow-x: auto; /* Allows horizontal scrolling */
-    scroll-behavior: smooth; /* Makes the button clicks glide nicely */
-    scrollbar-width: none; /* Firefox: hides the ugly bottom scrollbar */
-    padding-bottom: 15px; /* Space for the card hover effect */
+    overflow-x: auto; 
+    scroll-behavior: smooth; 
+    scrollbar-width: none; 
+    padding-bottom: 15px; 
 }
 
-/* Chrome/Safari: hides the bottom scrollbar */
 .skills-carousel-track::-webkit-scrollbar {
     display: none; 
 }
 
-/* Force the skill cards to a specific width so they don't squish */
 .skills-carousel-track > div {
-    min-width: 300px; /* Adjust this to change card width */
+    min-width: 300px; 
     max-width: 300px;
-    flex-shrink: 0; /* Prevents flexbox from squeezing them */
+    flex-shrink: 0; 
 }
 
-/* The Arrow Buttons */
 .carousel-arrow {
     position: absolute;
     top: 50%;
@@ -329,10 +325,38 @@ body {
     color: #111827;
 }
 
-.carousel-arrow.left {
-    left: -15px;
-}
+.carousel-arrow.left { left: -15px; }
+.carousel-arrow.right { right: -15px; }
 
-.carousel-arrow.right {
-    right: -15px;
+/* ==========================================
+   GOOGLE MEET VIDEO UI STYLES
+   ========================================== */
+.meet-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #3c4043;
+    color: white;
+    border: none;
+    display: flex; justify-content: center; align-items: center;
+    cursor: pointer;
+    transition: background 0.2s;
 }
+.meet-btn:hover { background: #4a4d51; }
+
+/* The Red states for Mic Muted / Camera Off */
+.meet-btn.active-off { background: #ea4335; color: white; }
+.meet-btn.active-off:hover { background: #d93025; }
+
+/* The Pill-shaped End Call button */
+.meet-btn.end-call { width: 60px; border-radius: 30px; background: #ea4335; }
+.meet-btn.end-call:hover { background: #d93025; }
+
+.meet-icon-btn {
+    background: none; border: none; color: white; cursor: pointer; padding: 5px;
+    display: flex; justify-content: center; align-items: center;
+    border-radius: 50%; transition: background 0.2s;
+}
+.meet-icon-btn:hover { background: #3c4043; }
+
+/* Ensure the video injected by Agora fills the container nicely */
+.agora_video_player { border-radius: 8px !important; }
