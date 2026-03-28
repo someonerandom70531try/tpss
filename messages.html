@@ -143,6 +143,21 @@
         </div>
     </div>
 
+    <!-- Delete Message Confirmation Modal -->
+    <div id="delete-confirm-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+                <i data-lucide="alert-triangle" style="width: 48px; height: 48px; color: #ef4444;"></i>
+            </div>
+            <h3 style="margin: 0 0 10px 0; color: #111827;">Delete Message?</h3>
+            <p style="color: #4b5563; font-size: 0.95rem; margin-bottom: 20px;">This message will be removed from the chat for everyone.</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button onclick="closeDeleteModal()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
+                <button id="confirm-delete-btn" class="btn-primary" style="padding: 8px 16px; background-color: #ef4444; border: none;">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Right-Click Message Menu -->
     <div id="msg-context-menu" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 5px 0; min-width: 120px;">
         <button onclick="handleMenuEdit()" style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 15px; background: none; border: none; text-align: left; cursor: pointer; font-size: 0.9rem; color: #374151;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">
