@@ -699,18 +699,32 @@ window.showContextMenu = function(e, msgId, content) {
     }
 }
 
-window.handleMenuDelete = async function() {
+window.closeDeleteModal = function() {
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+window.handleMenuDelete = function() {
     if(!activeContextMenuMsgId) return;
-    if(!confirm("Delete this message?")) return;
     
-    // Soft delete: flip the flag and record the exact timestamp for the 30-day cron job
-    await supabaseClient.from('messages').update({ 
-        is_deleted: true,
-        deleted_at: new Date().toISOString()
-    }).eq('id', activeContextMenuMsgId);
-    
-    loadChatMessages(currentChatUserId);
+    // Hide the right-click menu
     document.getElementById('msg-context-menu').style.display = 'none';
+
+    // Show custom confirmation modal
+    const modal = document.getElementById('delete-confirm-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('confirm-delete-btn').onclick = async function() {
+            // Perform the soft delete
+            await supabaseClient.from('messages').update({ 
+                is_deleted: true,
+                deleted_at: new Date().toISOString()
+            }).eq('id', activeContextMenuMsgId);
+            
+            loadChatMessages(currentChatUserId);
+            closeDeleteModal();
+        };
+    }
 }
 
 window.handleMenuEdit = async function() {
