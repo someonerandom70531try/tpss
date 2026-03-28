@@ -473,8 +473,6 @@ async function handleLogout() {
 // 5. MESSAGING SYSTEM LOGIC (Standalone Page)
 // ==========================================
 let currentChatUserId = null;
-
-// Global variables for the right-click menu
 let activeContextMenuMsgId = null;
 let activeContextMenuMsgContent = null;
 
@@ -580,43 +578,12 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
-    // Show the video call button
-    const videoBtn = document.getElementById('video-call-btn');
-    if (videoBtn) videoBtn.style.display = 'flex';
-    
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
     loadChatConnections();
     updateMessagesBadge();
     loadChatMessages(userId);
-}
-
-// Generate a video call link and send it in the chat
-async function startVideoCall() {
-    if (!currentChatUserId) return;
-    
-    const currentUserId = localStorage.getItem('currentUserId');
-    
-    // 1. Create a unique, private room name using both user IDs
-    const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
-    const meetingLink = `https://meet.jit.si/${roomName}`;
-    
-    // 2. Format a clickable HTML message
-    const messageContent = `🎥 I've started a video call! Click here to join: <br><a href="${meetingLink}" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: bold; display: inline-block; margin-top: 5px;">Join Video Meeting</a>`;
-    
-    // 3. Save the message to Supabase
-    await supabaseClient.from('messages').insert([{
-        sender_id: currentUserId,
-        receiver_id: currentChatUserId,
-        content: messageContent
-    }]);
-
-    // 4. Open the meeting instantly for the person who clicked the button
-    window.open(meetingLink, '_blank');
-    
-    // 5. Reload the chat to show the new link
-    loadChatMessages(currentChatUserId);
 }
 
 async function loadChatMessages(otherUserId) {
@@ -714,7 +681,9 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
-// Right Click Action Handlers
+// ==========================================
+// Right-Click Context Menu Actions
+// ==========================================
 window.showContextMenu = function(e, msgId, content) {
     e.preventDefault(); // Stop the default browser right-click menu
     
@@ -746,16 +715,29 @@ window.handleMenuDelete = async function() {
 
 window.handleMenuEdit = async function() {
     if(!activeContextMenuMsgId) return;
-    const newContent = prompt("Edit your message:", activeContextMenuMsgContent);
     
-    if (newContent !== null && newContent.trim() !== "" && newContent !== activeContextMenuMsgContent) {
-        await supabaseClient.from('messages').update({ 
-            content: newContent.trim(),
-            is_edited: true 
-        }).eq('id', activeContextMenuMsgId);
+    const modal = document.getElementById('custom-edit-modal');
+    if (!modal) return;
+    
+    document.getElementById('modal-title').innerText = "Edit Message";
+    document.getElementById('modal-input').value = activeContextMenuMsgContent;
+    document.getElementById('modal-input').placeholder = "Type your edited message...";
+    modal.style.display = 'flex';
+    
+    document.getElementById('modal-save-btn').onclick = async function() {
+        const newContent = document.getElementById('modal-input').value.trim();
+        closeModal();
         
-        loadChatMessages(currentChatUserId);
-    }
+        if (newContent !== "" && newContent !== activeContextMenuMsgContent) {
+            await supabaseClient.from('messages').update({ 
+                content: newContent,
+                is_edited: true 
+            }).eq('id', activeContextMenuMsgId);
+            
+            loadChatMessages(currentChatUserId);
+        }
+    };
+    
     document.getElementById('msg-context-menu').style.display = 'none';
 }
 
