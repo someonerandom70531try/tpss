@@ -578,6 +578,10 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
+    // Show the video call button
+    const videoBtn = document.getElementById('video-call-btn');
+    if (videoBtn) videoBtn.style.display = 'flex';
+    
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
@@ -1193,3 +1197,183 @@ document.addEventListener('DOMContentLoaded', () => {
         loadPublicCertificates();
     }
 });
+
+// ==========================================
+// 12. AGORA VIDEO CALLING ENGINE (GOOGLE MEET UI)
+// ==========================================
+// PASTE YOUR AGORA APP ID HERE TOO (It's required on the frontend)
+const AGORA_APP_ID = "YOUR_APP_ID"; 
+
+let rtc = {
+    localAudioTrack: null,
+    localVideoTrack: null,
+    client: null
+};
+
+let options = {
+    appId: AGORA_APP_ID,
+    channel: null,
+    token: null,
+    uid: null
+};
+
+let isAudioMuted = false;
+let isVideoMuted = false;
+
+// 1. Fetch Token from Backend
+async function fetchAgoraToken(channelName) {
+    try {
+        const response = await fetch(`/rtcToken?channelName=${channelName}`);
+        const data = await response.json();
+        return data.token;
+    } catch (error) {
+        console.error("Error fetching token:", error);
+        console.warn("Could not fetch video token. Is your Node server running?");
+        return null;
+    }
+}
+
+// 2. Trigger the Call
+async function startVideoCall() {
+    if (!currentChatUserId) return;
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    // Create a deterministic room name using both User IDs
+    const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
+    options.channel = roomName;
+
+    // Ask server for permission token
+    const token = await fetchAgoraToken(roomName);
+    if (!token) return;
+    options.token = token;
+    options.uid = currentUserId; 
+
+    // Pop open the custom Google Meet UI over the chat
+    document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('video-call-overlay').style.display = 'flex';
+
+    // Start a timer to count call duration
+    startCallTimer();
+
+    // Send a message so the other user can click "Video Call" to join
+    const messageContent = `🎥 I've started a video call! Click the 'Video Call' button at the top of the chat to join me.`;
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
+    }]);
+    loadChatMessages(currentChatUserId);
+
+    // Initialize Video SDK
+    await joinCall();
+}
+
+// 3. Connect to Agora
+async function joinCall() {
+    rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+    // Listen for when the OTHER user joins and turns on their camera
+    rtc.client.on("user-published", async (user, mediaType) => {
+        await rtc.client.subscribe(user, mediaType);
+        console.log("Subscribed to remote user!");
+
+        if (mediaType === "video") {
+            // Create a video box for them dynamically
+            if (document.getElementById(`player-${user.uid}`) === null) {
+                const playerContainer = document.createElement("div");
+                playerContainer.id = `player-${user.uid}`;
+                playerContainer.style.width = "100%";
+                playerContainer.style.height = "100%";
+                playerContainer.style.background = "#3c4043";
+                playerContainer.style.borderRadius = "8px";
+                playerContainer.style.overflow = "hidden";
+                document.getElementById("remote-playerlist").append(playerContainer);
+            }
+            user.videoTrack.play(`player-${user.uid}`);
+        }
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+        }
+    });
+
+    // Listen for when the OTHER user leaves
+    rtc.client.on("user-unpublished", user => {
+        const playerContainer = document.getElementById(`player-${user.uid}`);
+        if (playerContainer) playerContainer.remove();
+    });
+
+    // Join the secure channel
+    await rtc.client.join(options.appId, options.channel, options.token, options.uid);
+
+    // Turn on MY mic and camera
+    [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+
+    // Show my face in the tiny picture-in-picture box
+    rtc.localVideoTrack.play("local-player");
+
+    // Publish my video to the room
+    await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+}
+
+// 4. Leave the Call
+async function leaveCall() {
+    // Shut off hardware
+    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
+    if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
+    if (rtc.client) { await rtc.client.leave(); }
+
+    // Reset UI
+    document.getElementById('video-call-overlay').style.display = 'none';
+    document.getElementById("remote-playerlist").innerHTML = ""; 
+    stopCallTimer();
+}
+
+// 5. Button Actions (Mic & Camera)
+function toggleMic() {
+    if(!rtc.localAudioTrack) return;
+    isAudioMuted = !isAudioMuted;
+    rtc.localAudioTrack.setMuted(isAudioMuted);
+    
+    const btn = document.getElementById('btn-mic');
+    if(isAudioMuted) {
+        btn.classList.add('active-off');
+        btn.innerHTML = `<i data-lucide="mic-off" style="width: 20px; height: 20px;"></i>`;
+    } else {
+        btn.classList.remove('active-off');
+        btn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
+}
+
+function toggleCam() {
+    if(!rtc.localVideoTrack) return;
+    isVideoMuted = !isVideoMuted;
+    rtc.localVideoTrack.setMuted(isVideoMuted);
+    
+    const btn = document.getElementById('btn-cam');
+    if(isVideoMuted) {
+        btn.classList.add('active-off');
+        btn.innerHTML = `<i data-lucide="video-off" style="width: 20px; height: 20px;"></i>`;
+    } else {
+        btn.classList.remove('active-off');
+        btn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
+}
+
+// 6. Simple Timer Logic for the Bottom Left Corner
+let callInterval;
+function startCallTimer() {
+    let seconds = 0;
+    const timeDisplay = document.getElementById('call-time');
+    timeDisplay.innerText = "00:00";
+    
+    callInterval = setInterval(() => {
+        seconds++;
+        const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const secs = String(seconds % 60).padStart(2, '0');
+        timeDisplay.innerText = `${mins}:${secs}`;
+    }, 1000);
+}
+
+function stopCallTimer() {
+    clearInterval(callInterval);
+}
