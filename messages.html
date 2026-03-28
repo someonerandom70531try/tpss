@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- OFFICIAL AGORA SDK -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body style="background-color: #f3f2ef; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden;"> 
     
@@ -79,14 +81,20 @@
 
         <div style="flex: 1; display: flex; flex-direction: column; background: #efeae2; position: relative;">
             
-            <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; gap: 12px; height: 65px; box-sizing: border-box;">
-                <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
-                    <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
+            <div id="chat-header" style="padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #d1d5db; display: flex; align-items: center; justify-content: space-between; height: 65px; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                    <div id="chat-header-avatar" style="width: 40px; height: 40px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="user" style="color: white; width: 24px; height: 24px;"></i>
+                    </div>
+                    <div>
+                        <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Messages</h4>
+                        <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
+                    </div>
                 </div>
-                <div style="flex: 1;">
-                    <h4 id="chat-header-name" style="margin: 0; font-size: 1.05rem; color: #111827; font-weight: 600;">Skill Swap Messages</h4>
-                    <p id="chat-header-status" style="margin: 0; font-size: 0.8rem; color: #6b7280;">Select a connection to start messaging</p>
-                </div>
+                
+                <button id="video-call-btn" onclick="startVideoCall()" class="icon-btn" style="display: none; background: #e0e7ff; color: #4f46e5; padding: 8px 15px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; align-items: center; gap: 8px; border: 1px solid #c7d2fe;">
+                    <i data-lucide="video" style="width: 18px; height: 18px;"></i> Video Call
+                </button>
             </div>
             
             <div id="chat-messages-area" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
@@ -166,6 +174,68 @@
         <button onclick="handleMenuDelete()" style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 15px; background: none; border: none; text-align: left; cursor: pointer; font-size: 0.9rem; color: #ef4444;" onmouseover="this.style.backgroundColor='#fef2f2'" onmouseout="this.style.backgroundColor='transparent'">
             <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete
         </button>
+    </div>
+
+    <!-- GOOGLE MEET STYLE VIDEO CALL OVERLAY -->
+    <div id="video-call-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #202124; z-index: 10000; flex-direction: column;">
+        <!-- Main Video Area -->
+        <div style="flex: 1; padding: 16px; display: flex; justify-content: center; align-items: center; position: relative;">
+            <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; gap: 16px; justify-content: center; align-items: center;">
+                <!-- Remote video injects here automatically -->
+            </div>
+            
+            <!-- Local Video (Picture-in-Picture style, bottom right) -->
+            <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 30px; right: 30px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #5f6368; z-index: 10;"></div>
+        </div>
+
+        <!-- Bottom Control Bar -->
+        <div style="height: 80px; background: #202124; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-top: 1px solid #3c4043;">
+            
+            <!-- Left: Meeting Info -->
+            <div style="color: white; font-size: 1rem; font-weight: 500; display: flex; align-items: center; gap: 15px; width: 250px;">
+                <span id="call-time">Live</span>
+                <span style="color: #5f6368;">|</span>
+                <span id="call-room-name">Skill Swap Call</span>
+            </div>
+
+            <!-- Center: Controls -->
+            <div style="display: flex; gap: 12px;">
+                <button id="btn-mic" class="meet-btn" onclick="toggleMic()">
+                    <i data-lucide="mic" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button id="btn-cam" class="meet-btn" onclick="toggleCam()">
+                    <i data-lucide="video" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button class="meet-btn" onclick="console.log('Screen share coming soon')">
+                    <i data-lucide="monitor-up" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button class="meet-btn" onclick="console.log('Reactions coming soon')">
+                    <i data-lucide="smile" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button class="meet-btn" onclick="console.log('Captions coming soon')">
+                    <i data-lucide="subtitles" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button class="meet-btn" onclick="console.log('Raise hand coming soon')">
+                    <i data-lucide="hand" style="width: 20px; height: 20px;"></i>
+                </button>
+                <button class="meet-btn">
+                    <i data-lucide="more-vertical" style="width: 20px; height: 20px;"></i>
+                </button>
+                
+                <!-- End Call Red Pill -->
+                <button class="meet-btn end-call" onclick="leaveCall()">
+                    <i data-lucide="phone-off" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+
+            <!-- Right: Side Icons -->
+            <div style="display: flex; gap: 15px; width: 250px; justify-content: flex-end; color: white;">
+                <button class="meet-icon-btn"><i data-lucide="info" style="width: 20px; height: 20px;"></i></button>
+                <button class="meet-icon-btn"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></button>
+                <button class="meet-icon-btn"><i data-lucide="layout-grid" style="width: 20px; height: 20px;"></i></button>
+                <button class="meet-icon-btn"><i data-lucide="shield" style="width: 20px; height: 20px;"></i></button>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>
