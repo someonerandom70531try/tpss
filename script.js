@@ -538,9 +538,10 @@ async function loadChatConnections() {
             if (lastMsg) {
                 const prefix = lastMsg.sender_id == currentUserId ? "You: " : "";
                 
-                // Show if it was a deleted message
                 if (lastMsg.is_deleted) {
                     lastMsgText = prefix + "🚫 This message was deleted";
+                } else if (lastMsg.content.startsWith('[CALL_INVITE]:')) {
+                    lastMsgText = prefix + "🎥 Video Call Started";
                 } else {
                     lastMsgText = prefix + lastMsg.content;
                 }
@@ -610,7 +611,6 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        // Pass the full msg object instead of just content
         chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
     });
     
@@ -623,7 +623,7 @@ function createMessageHtml(msg, isSender) {
     let bg = isSender ? 'background: #dcfce7; border: 1px solid #bbf7d0;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
     const radius = isSender ? 'border-radius: 12px 12px 0 12px;' : 'border-radius: 12px 12px 12px 0;';
     
-    // Format timestamp (e.g., "16:48")
+    // Format timestamp
     const date = new Date(msg.created_at || Date.now());
     const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -638,22 +638,31 @@ function createMessageHtml(msg, isSender) {
                        </div>`;
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
         bg = isSender ? 'background: #f3f4f6; border: 1px solid #e5e7eb;' : 'background: #f9fafb; border: 1px solid #e5e7eb;';
-    } else {
-        // Normal or Edited Message
+    } 
+    // Handle Video Call Invites[cite: 7]
+    else if (msg.content.startsWith('[CALL_INVITE]:')) {
+        contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4f46e5;">
+                        <i data-lucide="video" style="width:18px; height:18px;"></i> Video Call Started
+                       </div>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        bg = isSender ? 'background: #e0e7ff; border: 1px solid #c7d2fe;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
+        rightClickEvent = ''; // Don't allow editing of system tags
+    } 
+    // Normal Message
+    else {
         contentHtml = msg.content;
         const editedMark = msg.is_edited ? 'Edited ' : '';
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${editedMark}${timeString}</span>`;
         
-        // ONLY allow right click if the user is the sender
+        // ONLY allow right click if the user is the sender[cite: 7]
         if (isSender) {
-            // Clean content to prevent breaking the JS function string
             const safeContent = msg.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             rightClickEvent = `oncontextmenu="showContextMenu(event, ${msg.id}, '${safeContent}')"`;
         }
     }
     
     return `
-        <div ${rightClickEvent} style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827; cursor: ${isSender && !msg.is_deleted ? 'context-menu' : 'default'};">
+        <div ${rightClickEvent} style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827; cursor: ${isSender && !msg.is_deleted && rightClickEvent !== '' ? 'context-menu' : 'default'};">
             ${contentHtml}
             ${metaHtml}
         </div>
@@ -680,7 +689,6 @@ async function sendChatMessage() {
         return;
     }
 
-    // Reload the chat instantly to show the new message
     loadChatMessages(currentChatUserId);
     loadChatConnections();
 }
@@ -689,15 +697,13 @@ async function sendChatMessage() {
 // Right-Click Context Menu Actions
 // ==========================================
 window.showContextMenu = function(e, msgId, content) {
-    e.preventDefault(); // Stop the default browser right-click menu
-    
+    e.preventDefault(); 
     activeContextMenuMsgId = msgId;
     activeContextMenuMsgContent = content;
 
     const menu = document.getElementById('msg-context-menu');
     if (menu) {
         menu.style.display = 'block';
-        // Position the menu exactly where the mouse clicked
         menu.style.left = `${e.pageX}px`;
         menu.style.top = `${e.pageY}px`;
     }
@@ -710,16 +716,12 @@ window.closeDeleteModal = function() {
 
 window.handleMenuDelete = function() {
     if(!activeContextMenuMsgId) return;
-    
-    // Hide the right-click menu
     document.getElementById('msg-context-menu').style.display = 'none';
 
-    // Show custom confirmation modal
     const modal = document.getElementById('delete-confirm-modal');
     if (modal) {
         modal.style.display = 'flex';
         document.getElementById('confirm-delete-btn').onclick = async function() {
-            // Perform the soft delete
             await supabaseClient.from('messages').update({ 
                 is_deleted: true,
                 deleted_at: new Date().toISOString()
@@ -1123,10 +1125,23 @@ function setupRealtimeListeners() {
                 if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
             }
 
-            // MESSAGING REALTIME
+            // MESSAGING REALTIME (Includes Call Triggers)
             if (table === 'messages' && currentUserId) {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
+                        
+                        // Catch the special CALL_INVITE signaling tag
+                        if (data.content.startsWith('[CALL_INVITE]:')) {
+                            const roomName = data.content.split(':')[1];
+                            // Fetch user info to show Discord-style modal
+                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
+                                if (caller) {
+                                    let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                                    showIncomingCallModal(data.sender_id, caller.username, avatar, roomName);
+                                }
+                            });
+                        }
+
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
                             supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
                             const chatArea = document.getElementById('chat-messages-area');
@@ -1185,9 +1200,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
+    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinRoom = urlParams.get('joinCall');
+        const callerId = urlParams.get('callerId');
+        
+        if (joinRoom && callerId) {
+            // Clear URL to prevent re-joining on a page refresh
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Fetch caller info and automatically open chat and join video
+            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
+                if (caller) {
+                    let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                    setTimeout(() => {
+                        openChatWithUser(callerId, caller.username, avatar);
+                        joinVideoRoomFromInvite(joinRoom);
+                    }, 500); 
+                }
+            });
+        }
     }
+    
     if (document.getElementById('profile-page-name')) {
         loadUserProfile();
         loadCertificates(); 
@@ -1201,7 +1238,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 // 12. AGORA VIDEO CALLING ENGINE (GOOGLE MEET UI)
 // ==========================================
-// PASTE YOUR AGORA APP ID HERE TOO (It's required on the frontend)
+// PASTE YOUR AGORA APP ID HERE
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
 let rtc = {
@@ -1233,7 +1270,7 @@ async function fetchAgoraToken(channelName) {
     }
 }
 
-// 2. Trigger the Call
+// 2. Trigger the Call (Caller Side)
 async function startVideoCall() {
     if (!currentChatUserId) return;
     const currentUserId = localStorage.getItem('currentUserId');
@@ -1255,8 +1292,8 @@ async function startVideoCall() {
     // Start a timer to count call duration
     startCallTimer();
 
-    // Send a message so the other user can click "Video Call" to join
-    const messageContent = `🎥 I've started a video call! Click the 'Video Call' button at the top of the chat to join me.`;
+    // SEND THE SIGNAL: This tells the other person's browser to pop up the Discord modal[cite: 7]
+    const messageContent = `[CALL_INVITE]:${roomName}`;
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
     }]);
@@ -1266,8 +1303,22 @@ async function startVideoCall() {
     await joinCall();
 }
 
-// 3. Connect to Agora
-// 3. Connect to Agora (Bulletproof Version)
+// Automatically called when a user Accepts the call from the popup
+async function joinVideoRoomFromInvite(roomName) {
+    const currentUserId = localStorage.getItem('currentUserId');
+    options.channel = roomName;
+    const token = await fetchAgoraToken(roomName);
+    if (!token) return;
+    options.token = token;
+    options.uid = currentUserId;
+
+    document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('video-call-overlay').style.display = 'flex';
+    startCallTimer();
+    await joinCall();
+}
+
+// 3. Connect to Agora (Hardware Bulletproof Version)
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
@@ -1319,7 +1370,7 @@ async function joinCall() {
             
             const localPlayer = document.getElementById("local-player");
             localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
-            lucide.createIcons(); // render the icon
+            lucide.createIcons(); 
 
             try {
                 // Try grabbing JUST the microphone
@@ -1333,6 +1384,7 @@ async function joinCall() {
         }
     }
 }
+
 // 4. Leave the Call
 async function leaveCall() {
     // Shut off hardware
@@ -1397,3 +1449,119 @@ function startCallTimer() {
 function stopCallTimer() {
     clearInterval(callInterval);
 }
+
+// ==========================================
+// 13. GLOBAL INCOMING CALL POPUP LOGIC
+// ==========================================
+function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
+    // Remove existing if any
+    const existing = document.getElementById('incoming-call-popup');
+    if (existing) existing.remove();
+
+    const avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #374151;">` 
+        : `<div style="width: 70px; height: 70px; border-radius: 50%; background: ${getColorForUsername(callerName)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; border: 3px solid #374151;">${callerName.charAt(0).toUpperCase()}</div>`;
+
+    const html = `
+    <div id="incoming-call-popup" style="position: fixed; bottom: 30px; right: 30px; width: 280px; background: #18191c; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; padding: 25px 20px; text-align: center; color: white; font-family: sans-serif; animation: slideUp 0.3s ease-out;">
+        <style>
+            @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+            @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+            .call-btn { width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+            .call-btn:hover { transform: scale(1.1); }
+            .btn-accept { background: #22c55e; color: white; animation: pulseRing 2s infinite; }
+            .btn-reject { background: #ef4444; color: white; }
+            .quick-reply-select { width: 100%; margin-top: 15px; padding: 10px; border-radius: 6px; background: #2d2d35; color: white; border: 1px solid #4b5563; font-size: 0.85rem; outline: none; appearance: none; cursor: pointer; }
+        </style>
+        
+        <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+            ${avatarHtml}
+        </div>
+        <h3 style="margin: 0 0 5px 0; font-size: 1.25rem;">${callerName}</h3>
+        <p style="margin: 0 0 25px 0; color: #9ca3af; font-size: 0.9rem;">Incoming Video Call...</p>
+        
+        <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 15px;">
+            <button class="call-btn btn-reject" onclick="rejectCall(${callerId})" title="Reject">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.59 13.41 12 12m0 0 1.41-1.41M12 12l1.41 1.41M12 12l-1.41-1.41M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <button class="call-btn btn-accept" onclick="acceptCall('${callerId}', '${roomName}')" title="Accept">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <select id="reject-reason-${callerId}" class="quick-reply-select">
+                <option value="">-- Or reply with a message --</option>
+                <option value="I'm busy right now, I'll call you back.">I'm busy right now</option>
+                <option value="Give me 15 minutes.">Give me 15 mins</option>
+                <option value="In a meeting, text me!">In a meeting</option>
+                <option value="Can we text instead?">Can we text instead?</option>
+            </select>
+            <button onclick="rejectCallWithReason(${callerId})" style="margin-top: 15px; background: #4b5563; border: none; padding: 10px 12px; border-radius: 6px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: bold;">Send</button>
+        </div>
+    </div>
+    `;
+    
+    // Inject straight into the HTML body so it shows up on ANY page[cite: 7]
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// Red Button Logic
+window.rejectCall = async function(callerId) {
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    // Send default busy msg
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: callerId, content: "I'm busy right now."
+    }]);
+    
+    if (window.location.pathname.includes('messages.html') && currentChatUserId == callerId) {
+        loadChatMessages(callerId);
+    }
+};
+
+// Dropdown Button Logic
+window.rejectCallWithReason = async function(callerId) {
+    const select = document.getElementById(`reject-reason-${callerId}`);
+    const reason = select.value;
+    
+    if (!reason) {
+        rejectCall(callerId); // If they click send without choosing, just use the default
+        return;
+    }
+    
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: callerId, content: reason
+    }]);
+    
+    if (window.location.pathname.includes('messages.html') && currentChatUserId == callerId) {
+        loadChatMessages(callerId);
+    }
+};
+
+// Green Button Logic
+window.acceptCall = function(callerId, roomName) {
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    // If already on messages page, just open the chat and start video
+    if (window.location.pathname.includes('messages.html')) {
+        supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
+            if (caller) {
+                let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                openChatWithUser(callerId, caller.username, avatar);
+                joinVideoRoomFromInvite(roomName);
+            }
+        });
+    } else {
+        // If they are on index.html or account.html, instantly redirect them to messages.html with hidden instructions
+        window.location.href = `messages.html?joinCall=${roomName}&callerId=${callerId}`;
+    }
+};
