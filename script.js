@@ -1202,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // 12. AGORA VIDEO CALLING ENGINE (GOOGLE MEET UI)
 // ==========================================
 // PASTE YOUR AGORA APP ID HERE TOO (It's required on the frontend)
-const AGORA_APP_ID = "YOUR_APP_ID"; 
+const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
 let rtc = {
     localAudioTrack: null,
