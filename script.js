@@ -1267,6 +1267,7 @@ async function startVideoCall() {
 }
 
 // 3. Connect to Agora
+// 3. Connect to Agora (Bulletproof Version)
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
@@ -1303,16 +1304,35 @@ async function joinCall() {
     // Join the secure channel
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
 
-    // Turn on MY mic and camera
-    [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+    try {
+        // Try to grab BOTH the mic and camera
+        [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        rtc.localVideoTrack.play("local-player");
+        await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+        
+    } catch (error) {
+        console.error("Hardware Error:", error);
+        
+        // If device is not found, gracefully fallback to Audio-Only
+        if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
+            console.log("Camera missing! Attempting audio-only mode...");
+            
+            const localPlayer = document.getElementById("local-player");
+            localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
+            lucide.createIcons(); // render the icon
 
-    // Show my face in the tiny picture-in-picture box
-    rtc.localVideoTrack.play("local-player");
-
-    // Publish my video to the room
-    await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+            try {
+                // Try grabbing JUST the microphone
+                rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                await rtc.client.publish([rtc.localAudioTrack]);
+            } catch (audioError) {
+                console.error("Microphone missing too!", audioError);
+                localPlayer.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="mic-off" style="width: 24px; height: 24px;"></i> No Hardware</div>`;
+                lucide.createIcons();
+            }
+        }
+    }
 }
-
 // 4. Leave the Call
 async function leaveCall() {
     // Shut off hardware
