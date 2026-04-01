@@ -639,7 +639,7 @@ function createMessageHtml(msg, isSender) {
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
         bg = isSender ? 'background: #f3f4f6; border: 1px solid #e5e7eb;' : 'background: #f9fafb; border: 1px solid #e5e7eb;';
     } 
-    // Handle Video Call Invites[cite: 7]
+    // Handle Video Call Invites
     else if (msg.content.startsWith('[CALL_INVITE]:')) {
         contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4f46e5;">
                         <i data-lucide="video" style="width:18px; height:18px;"></i> Video Call Started
@@ -654,7 +654,7 @@ function createMessageHtml(msg, isSender) {
         const editedMark = msg.is_edited ? 'Edited ' : '';
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${editedMark}${timeString}</span>`;
         
-        // ONLY allow right click if the user is the sender[cite: 7]
+        // ONLY allow right click if the user is the sender
         if (isSender) {
             const safeContent = msg.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             rightClickEvent = `oncontextmenu="showContextMenu(event, ${msg.id}, '${safeContent}')"`;
@@ -1125,15 +1125,20 @@ function setupRealtimeListeners() {
                 if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
             }
 
-            // MESSAGING REALTIME (Includes Call Triggers)
+            // MESSAGING REALTIME (Includes Call Triggers & Rejections)
             if (table === 'messages' && currentUserId) {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         
+                        // IF WE ARE DIALING, AND THEY SENT A MESSAGE, THEY REJECTED THE CALL.
+                        if (isCallDialing && currentChatUserId == data.sender_id) {
+                            stopDialtone();
+                            leaveCall(); // Drop out of the empty room
+                        }
+
                         // Catch the special CALL_INVITE signaling tag
                         if (data.content.startsWith('[CALL_INVITE]:')) {
                             const roomName = data.content.split(':')[1];
-                            // Fetch user info to show Discord-style modal
                             supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
                                 if (caller) {
                                     let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
@@ -1209,10 +1214,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const callerId = urlParams.get('callerId');
         
         if (joinRoom && callerId) {
-            // Clear URL to prevent re-joining on a page refresh
             window.history.replaceState({}, document.title, window.location.pathname);
             
-            // Fetch caller info and automatically open chat and join video
             supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
                 if (caller) {
                     let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
@@ -1238,7 +1241,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 // 12. AGORA VIDEO CALLING ENGINE (GOOGLE MEET UI)
 // ==========================================
-// PASTE YOUR AGORA APP ID HERE
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
 let rtc = {
@@ -1257,6 +1259,37 @@ let options = {
 let isAudioMuted = false;
 let isVideoMuted = false;
 
+// Audio Handlers
+let isCallRinging = false;
+let isCallDialing = false;
+
+const ringAudio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg');
+ringAudio.loop = true;
+
+const dialAudio = new Audio('https://actions.google.com/sounds/v1/communications/calling_connect_beep.ogg');
+dialAudio.loop = true;
+
+function playRingtone() { 
+    isCallRinging = true; 
+    ringAudio.play().catch(e => console.log("Browser autoplay policy blocked ringtone")); 
+}
+function stopRingtone() { 
+    isCallRinging = false; 
+    ringAudio.pause(); 
+    ringAudio.currentTime = 0; 
+}
+
+function playDialtone() { 
+    isCallDialing = true; 
+    dialAudio.play().catch(e => console.log("Browser autoplay policy blocked dialtone")); 
+}
+function stopDialtone() { 
+    isCallDialing = false; 
+    dialAudio.pause(); 
+    dialAudio.currentTime = 0; 
+}
+
+
 // 1. Fetch Token from Backend
 async function fetchAgoraToken(channelName) {
     try {
@@ -1265,7 +1298,6 @@ async function fetchAgoraToken(channelName) {
         return data.token;
     } catch (error) {
         console.error("Error fetching token:", error);
-        console.warn("Could not fetch video token. Is your Node server running?");
         return null;
     }
 }
@@ -1275,31 +1307,28 @@ async function startVideoCall() {
     if (!currentChatUserId) return;
     const currentUserId = localStorage.getItem('currentUserId');
 
-    // Create a deterministic room name using both User IDs
     const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
     options.channel = roomName;
 
-    // Ask server for permission token
     const token = await fetchAgoraToken(roomName);
     if (!token) return;
     options.token = token;
     options.uid = currentUserId; 
 
-    // Pop open the custom Google Meet UI over the chat
     document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
     document.getElementById('video-call-overlay').style.display = 'flex';
 
-    // Start a timer to count call duration
     startCallTimer();
 
-    // SEND THE SIGNAL: This tells the other person's browser to pop up the Discord modal[cite: 7]
+    // Send invite and start playing dialing sound
     const messageContent = `[CALL_INVITE]:${roomName}`;
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
     }]);
     loadChatMessages(currentChatUserId);
+    
+    playDialtone();
 
-    // Initialize Video SDK
     await joinCall();
 }
 
@@ -1325,10 +1354,11 @@ async function joinCall() {
     // Listen for when the OTHER user joins and turns on their camera
     rtc.client.on("user-published", async (user, mediaType) => {
         await rtc.client.subscribe(user, mediaType);
-        console.log("Subscribed to remote user!");
+        
+        // They picked up! Stop dialing.
+        stopDialtone();
 
         if (mediaType === "video") {
-            // Create a video box for them dynamically
             if (document.getElementById(`player-${user.uid}`) === null) {
                 const playerContainer = document.createElement("div");
                 playerContainer.id = `player-${user.uid}`;
@@ -1352,32 +1382,21 @@ async function joinCall() {
         if (playerContainer) playerContainer.remove();
     });
 
-    // Join the secure channel
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
 
     try {
-        // Try to grab BOTH the mic and camera
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         rtc.localVideoTrack.play("local-player");
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
-        
     } catch (error) {
-        console.error("Hardware Error:", error);
-        
-        // If device is not found, gracefully fallback to Audio-Only
         if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
-            console.log("Camera missing! Attempting audio-only mode...");
-            
             const localPlayer = document.getElementById("local-player");
             localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
             lucide.createIcons(); 
-
             try {
-                // Try grabbing JUST the microphone
                 rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
                 await rtc.client.publish([rtc.localAudioTrack]);
             } catch (audioError) {
-                console.error("Microphone missing too!", audioError);
                 localPlayer.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="mic-off" style="width: 24px; height: 24px;"></i> No Hardware</div>`;
                 lucide.createIcons();
             }
@@ -1387,12 +1406,13 @@ async function joinCall() {
 
 // 4. Leave the Call
 async function leaveCall() {
-    // Shut off hardware
+    stopDialtone();
+    stopRingtone();
+    
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
     if (rtc.client) { await rtc.client.leave(); }
 
-    // Reset UI
     document.getElementById('video-call-overlay').style.display = 'none';
     document.getElementById("remote-playerlist").innerHTML = ""; 
     stopCallTimer();
@@ -1431,7 +1451,7 @@ function toggleCam() {
     lucide.createIcons();
 }
 
-// 6. Simple Timer Logic for the Bottom Left Corner
+// 6. Simple Timer Logic
 let callInterval;
 function startCallTimer() {
     let seconds = 0;
@@ -1451,34 +1471,37 @@ function stopCallTimer() {
 }
 
 // ==========================================
-// 13. GLOBAL INCOMING CALL POPUP LOGIC
+// 13. GLOBAL INCOMING CALL POPUP LOGIC (LIGHT THEME)
 // ==========================================
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
-    // Remove existing if any
     const existing = document.getElementById('incoming-call-popup');
     if (existing) existing.remove();
 
+    playRingtone();
+
     const avatarHtml = avatarUrl 
-        ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #374151;">` 
-        : `<div style="width: 70px; height: 70px; border-radius: 50%; background: ${getColorForUsername(callerName)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; border: 3px solid #374151;">${callerName.charAt(0).toUpperCase()}</div>`;
+        ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
+        : `<div style="width: 70px; height: 70px; border-radius: 50%; background: ${getColorForUsername(callerName)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${callerName.charAt(0).toUpperCase()}</div>`;
 
     const html = `
-    <div id="incoming-call-popup" style="position: fixed; bottom: 30px; right: 30px; width: 280px; background: #18191c; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; padding: 25px 20px; text-align: center; color: white; font-family: sans-serif; animation: slideUp 0.3s ease-out;">
+    <div id="incoming-call-popup" style="position: fixed; bottom: 30px; right: 30px; width: 280px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); z-index: 10000; padding: 25px 20px; text-align: center; color: #111827; font-family: 'Inter', sans-serif; animation: slideUp 0.3s ease-out;">
         <style>
             @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-            @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+            @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
             .call-btn { width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
             .call-btn:hover { transform: scale(1.1); }
             .btn-accept { background: #22c55e; color: white; animation: pulseRing 2s infinite; }
             .btn-reject { background: #ef4444; color: white; }
-            .quick-reply-select { width: 100%; margin-top: 15px; padding: 10px; border-radius: 6px; background: #2d2d35; color: white; border: 1px solid #4b5563; font-size: 0.85rem; outline: none; appearance: none; cursor: pointer; }
+            .quick-reply-select { width: 100%; margin-top: 15px; padding: 10px; border-radius: 6px; background: #f9fafb; color: #111827; border: 1px solid #d1d5db; font-size: 0.85rem; outline: none; appearance: none; cursor: pointer; }
+            .quick-reply-btn { margin-top: 15px; background: #f3f4f6; border: 1px solid #d1d5db; padding: 10px 12px; border-radius: 6px; color: #374151; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; }
+            .quick-reply-btn:hover { background: #e5e7eb; color: #111827; }
         </style>
         
         <div style="display: flex; justify-content: center; margin-bottom: 15px;">
             ${avatarHtml}
         </div>
         <h3 style="margin: 0 0 5px 0; font-size: 1.25rem;">${callerName}</h3>
-        <p style="margin: 0 0 25px 0; color: #9ca3af; font-size: 0.9rem;">Incoming Video Call...</p>
+        <p style="margin: 0 0 25px 0; color: #6b7280; font-size: 0.9rem;">Incoming Video Call...</p>
         
         <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 15px;">
             <button class="call-btn btn-reject" onclick="rejectCall(${callerId})" title="Reject">
@@ -1497,12 +1520,11 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
                 <option value="In a meeting, text me!">In a meeting</option>
                 <option value="Can we text instead?">Can we text instead?</option>
             </select>
-            <button onclick="rejectCallWithReason(${callerId})" style="margin-top: 15px; background: #4b5563; border: none; padding: 10px 12px; border-radius: 6px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: bold;">Send</button>
+            <button class="quick-reply-btn" onclick="rejectCallWithReason(${callerId})">Send</button>
         </div>
     </div>
     `;
     
-    // Inject straight into the HTML body so it shows up on ANY page[cite: 7]
     document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -1510,10 +1532,9 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
 window.rejectCall = async function(callerId) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone();
     
     const currentUserId = localStorage.getItem('currentUserId');
-    
-    // Send default busy msg
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: callerId, content: "I'm busy right now."
     }]);
@@ -1529,12 +1550,13 @@ window.rejectCallWithReason = async function(callerId) {
     const reason = select.value;
     
     if (!reason) {
-        rejectCall(callerId); // If they click send without choosing, just use the default
+        rejectCall(callerId); 
         return;
     }
     
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone();
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -1550,8 +1572,8 @@ window.rejectCallWithReason = async function(callerId) {
 window.acceptCall = function(callerId, roomName) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone();
     
-    // If already on messages page, just open the chat and start video
     if (window.location.pathname.includes('messages.html')) {
         supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
             if (caller) {
@@ -1561,7 +1583,6 @@ window.acceptCall = function(callerId, roomName) {
             }
         });
     } else {
-        // If they are on index.html or account.html, instantly redirect them to messages.html with hidden instructions
         window.location.href = `messages.html?joinCall=${roomName}&callerId=${callerId}`;
     }
 };
