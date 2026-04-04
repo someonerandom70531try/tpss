@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- OFFICIAL AGORA SDK -->
+    
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body style="background-color: #f3f2ef; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden;"> 
@@ -114,7 +114,6 @@
         </div>
     </main>
 
-    <!-- UI Modals -->
     <div id="requests-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 450px; width: 95%;">
             <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
@@ -139,7 +138,6 @@
         </div>
     </div>
 
-    <!-- Edit Message Modal -->
     <div id="custom-edit-modal" class="modal-overlay">
         <div class="modal-content">
             <h3 id="modal-title">Edit Message</h3>
@@ -151,7 +149,6 @@
         </div>
     </div>
 
-    <!-- Delete Message Confirmation Modal -->
     <div id="delete-confirm-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 400px; text-align: center;">
             <div style="display: flex; justify-content: center; margin-bottom: 15px;">
@@ -166,7 +163,6 @@
         </div>
     </div>
 
-    <!-- Right-Click Message Menu -->
     <div id="msg-context-menu" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 5px 0; min-width: 120px;">
         <button onclick="handleMenuEdit()" style="display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 15px; background: none; border: none; text-align: left; cursor: pointer; font-size: 0.9rem; color: #374151;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">
             <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Edit
@@ -176,29 +172,22 @@
         </button>
     </div>
 
-    <!-- GOOGLE MEET STYLE VIDEO CALL OVERLAY -->
     <div id="video-call-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #202124; z-index: 10000; flex-direction: column;">
-        <!-- Main Video Area -->
+        
         <div style="flex: 1; padding: 16px; display: flex; justify-content: center; align-items: center; position: relative;">
-            <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; gap: 16px; justify-content: center; align-items: center;">
-                <!-- Remote video injects here automatically -->
-            </div>
+            <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; gap: 16px; justify-content: center; align-items: center;"></div>
             
-            <!-- Local Video (Picture-in-Picture style, bottom right) -->
             <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 30px; right: 30px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #5f6368; z-index: 10;"></div>
         </div>
 
-        <!-- Bottom Control Bar -->
         <div style="height: 80px; background: #202124; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-top: 1px solid #3c4043;">
             
-            <!-- Left: Meeting Info -->
             <div style="color: white; font-size: 1rem; font-weight: 500; display: flex; align-items: center; gap: 15px; width: 250px;">
-                <span id="call-time">Live</span>
+                <span id="call-time">00:00</span>
                 <span style="color: #5f6368;">|</span>
                 <span id="call-room-name">Skill Swap Call</span>
             </div>
 
-            <!-- Center: Controls -->
             <div style="display: flex; gap: 12px;">
                 <button id="btn-mic" class="meet-btn" onclick="toggleMic()">
                     <i data-lucide="mic" style="width: 20px; height: 20px;"></i>
@@ -206,29 +195,27 @@
                 <button id="btn-cam" class="meet-btn" onclick="toggleCam()">
                     <i data-lucide="video" style="width: 20px; height: 20px;"></i>
                 </button>
-                <button class="meet-btn" onclick="console.log('Screen share coming soon')">
+                <button class="meet-btn" onclick="showToast('Screen sharing coming soon!')">
                     <i data-lucide="monitor-up" style="width: 20px; height: 20px;"></i>
                 </button>
-                <button class="meet-btn" onclick="console.log('Reactions coming soon')">
+                <button class="meet-btn" onclick="showToast('Reactions coming soon!')">
                     <i data-lucide="smile" style="width: 20px; height: 20px;"></i>
                 </button>
-                <button class="meet-btn" onclick="console.log('Captions coming soon')">
+                <button class="meet-btn" onclick="showToast('Captions coming soon!')">
                     <i data-lucide="subtitles" style="width: 20px; height: 20px;"></i>
                 </button>
-                <button class="meet-btn" onclick="console.log('Raise hand coming soon')">
+                <button class="meet-btn" onclick="showToast('Raise Hand coming soon!')">
                     <i data-lucide="hand" style="width: 20px; height: 20px;"></i>
                 </button>
                 <button class="meet-btn">
                     <i data-lucide="more-vertical" style="width: 20px; height: 20px;"></i>
                 </button>
                 
-                <!-- End Call Red Pill -->
-                <button class="meet-btn end-call" onclick="leaveCall()">
+                <button class="meet-btn end-call" onclick="endCallButtonAction()">
                     <i data-lucide="phone-off" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
 
-            <!-- Right: Side Icons -->
             <div style="display: flex; gap: 15px; width: 250px; justify-content: flex-end; color: white;">
                 <button class="meet-icon-btn"><i data-lucide="info" style="width: 20px; height: 20px;"></i></button>
                 <button class="meet-icon-btn"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></button>
