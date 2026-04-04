@@ -542,6 +542,10 @@ async function loadChatConnections() {
                     lastMsgText = prefix + "🚫 This message was deleted";
                 } else if (lastMsg.content.startsWith('[CALL_INVITE]:')) {
                     lastMsgText = prefix + "🎥 Video Call Started";
+                } else if (lastMsg.content.startsWith('[CALL_ENDED]:')) {
+                    lastMsgText = prefix + "📞 Call ended";
+                } else if (lastMsg.content === '[CALL_MISSED]') {
+                    lastMsgText = prefix + "📞 Missed Call";
                 } else {
                     lastMsgText = prefix + lastMsg.content;
                 }
@@ -579,7 +583,6 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     document.getElementById('chat-input-area').style.display = 'flex';
     
-    // Show the video call button
     const videoBtn = document.getElementById('video-call-btn');
     if (videoBtn) videoBtn.style.display = 'flex';
     
@@ -639,22 +642,39 @@ function createMessageHtml(msg, isSender) {
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
         bg = isSender ? 'background: #f3f4f6; border: 1px solid #e5e7eb;' : 'background: #f9fafb; border: 1px solid #e5e7eb;';
     } 
-    // Handle Video Call Invites
+    // Handle System Tags
     else if (msg.content.startsWith('[CALL_INVITE]:')) {
         contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4f46e5;">
                         <i data-lucide="video" style="width:18px; height:18px;"></i> Video Call Started
                        </div>`;
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
         bg = isSender ? 'background: #e0e7ff; border: 1px solid #c7d2fe;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
-        rightClickEvent = ''; // Don't allow editing of system tags
+        rightClickEvent = ''; 
     } 
+    else if (msg.content.startsWith('[CALL_ENDED]:')) {
+        const parts = msg.content.split(':');
+        const duration = parts.length >= 3 ? parts[1] + ":" + parts[2] : "Unknown";
+        contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4b5563;">
+                        <i data-lucide="phone" style="width:16px; height:16px;"></i> Call ended • ${duration}
+                       </div>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        bg = 'background: #f3f4f6; border: 1px solid #e5e7eb;';
+        rightClickEvent = ''; 
+    }
+    else if (msg.content === '[CALL_MISSED]') {
+        contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #ef4444;">
+                        <i data-lucide="phone-missed" style="width:16px; height:16px;"></i> Missed Call
+                       </div>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        bg = 'background: #fef2f2; border: 1px solid #fecaca;';
+        rightClickEvent = ''; 
+    }
     // Normal Message
     else {
         contentHtml = msg.content;
         const editedMark = msg.is_edited ? 'Edited ' : '';
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${editedMark}${timeString}</span>`;
         
-        // ONLY allow right click if the user is the sender
         if (isSender) {
             const safeContent = msg.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             rightClickEvent = `oncontextmenu="showContextMenu(event, ${msg.id}, '${safeContent}')"`;
@@ -1131,9 +1151,9 @@ function setupRealtimeListeners() {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         
                         // IF WE ARE DIALING, AND THEY SENT A MESSAGE, THEY REJECTED THE CALL.
-                        if (isCallDialing && currentChatUserId == data.sender_id) {
-                            stopDialtone();
-                            leaveCall(); // Drop out of the empty room
+                        // Make sure it wasn't just a system sync message
+                        if (isCallDialing && currentChatUserId == data.sender_id && !data.content.startsWith('[')) {
+                            cleanupVideoEngine(); 
                         }
 
                         // Catch the special CALL_INVITE signaling tag
@@ -1145,6 +1165,22 @@ function setupRealtimeListeners() {
                                     showIncomingCallModal(data.sender_id, caller.username, avatar, roomName);
                                 }
                             });
+                        }
+                        
+                        // Catch the Mutual End Call Signal
+                        else if (data.content.startsWith('[CALL_ENDED]:')) {
+                            if (isCallConnected || isCallDialing || isCallRinging) {
+                                cleanupVideoEngine();
+                            }
+                        }
+                        // Catch Missed Call Cancelation
+                        else if (data.content === '[CALL_MISSED]') {
+                            const popup = document.getElementById('incoming-call-popup');
+                            if(popup) popup.remove();
+                            stopRingtone();
+                            if (isCallRinging) {
+                                cleanupVideoEngine();
+                            }
                         }
 
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
@@ -1409,16 +1445,18 @@ async function joinCall() {
         }
     });
 
-    // Listen for when the OTHER user leaves
-    rtc.client.on("user-unpublished", user => {
-        const playerContainer = document.getElementById(`player-${user.uid}`);
-        if (playerContainer) playerContainer.remove();
+    // Listen for when the OTHER user leaves ungracefully (tab closed)
+    rtc.client.on("user-left", (user) => {
+        showToast("The other user disconnected.");
+        setTimeout(() => {
+            endCallButtonAction(); 
+        }, 1000);
     });
 
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
 
     try {
-        noCameraDetected = false; // Reset just in case they plugged one in
+        noCameraDetected = false; 
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         rtc.localVideoTrack.play("local-player");
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
@@ -1451,8 +1489,35 @@ async function joinCall() {
     }
 }
 
-// 4. Leave the Call
-async function leaveCall() {
+// 4. End Call Logic & Clean Up
+async function endCallButtonAction() {
+    if (isCallConnected && currentChatUserId) {
+        // Send actual duration to the chat
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
+        const durationStr = `${mins}:${secs}`;
+        
+        const currentUserId = localStorage.getItem('currentUserId');
+        await supabaseClient.from('messages').insert([{
+            sender_id: currentUserId, 
+            receiver_id: currentChatUserId, 
+            content: `[CALL_ENDED]:${durationStr}`
+        }]);
+    } else if (isCallDialing && currentChatUserId) {
+        // We cancelled the call before they picked up
+        const currentUserId = localStorage.getItem('currentUserId');
+        await supabaseClient.from('messages').insert([{
+            sender_id: currentUserId, 
+            receiver_id: currentChatUserId, 
+            content: `[CALL_MISSED]`
+        }]);
+    }
+    
+    cleanupVideoEngine();
+}
+
+// Handles the actual hardware cleanup and UI reset for both users
+async function cleanupVideoEngine() {
     stopDialtone();
     stopRingtone();
     
@@ -1460,8 +1525,11 @@ async function leaveCall() {
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
     if (rtc.client) { await rtc.client.leave(); }
 
-    document.getElementById('video-call-overlay').style.display = 'none';
-    document.getElementById("remote-playerlist").innerHTML = ""; 
+    const overlay = document.getElementById('video-call-overlay');
+    if (overlay) overlay.style.display = 'none';
+    
+    const remoteList = document.getElementById("remote-playerlist");
+    if (remoteList) remoteList.innerHTML = ""; 
     
     stopCallTimer();
 
@@ -1470,6 +1538,8 @@ async function leaveCall() {
     isVideoMuted = false;
     noCameraDetected = false;
     isCallConnected = false;
+    isCallDialing = false;
+    isCallRinging = false;
     
     const camBtn = document.getElementById('btn-cam');
     if(camBtn) {
@@ -1483,6 +1553,7 @@ async function leaveCall() {
     }
     lucide.createIcons();
 }
+
 
 // 5. Button Actions (Mic & Camera)
 function toggleMic() {
@@ -1524,15 +1595,17 @@ function toggleCam() {
 
 // 6. Simple Timer Logic
 let callInterval;
+let callSeconds = 0;
+
 function startCallTimer() {
-    let seconds = 0;
+    callSeconds = 0;
     const timeDisplay = document.getElementById('call-time');
-    timeDisplay.innerText = "00:00"; // Reset text to 0 immediately
+    timeDisplay.innerText = "00:00"; 
     
     callInterval = setInterval(() => {
-        seconds++;
-        const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
-        const secs = String(seconds % 60).padStart(2, '0');
+        callSeconds++;
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
         timeDisplay.innerText = `${mins}:${secs}`;
     }, 1000);
 }
