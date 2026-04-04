@@ -1238,8 +1238,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+
 // ==========================================
-// 12. AGORA VIDEO CALLING ENGINE (GOOGLE MEET UI)
+// 12. UI HELPERS (TOASTS)
+// ==========================================
+function showToast(message) {
+    let toast = document.getElementById('custom-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'custom-toast';
+        toast.style.cssText = "position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 12px 24px; border-radius: 8px; z-index: 10001; font-size: 0.95rem; font-weight: 500; display: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); transition: opacity 0.3s ease; display: flex; align-items: center; gap: 10px;";
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<i data-lucide="info" style="width: 18px; height: 18px; color: #60a5fa;"></i> ${message}`;
+    lucide.createIcons();
+    
+    toast.style.display = 'flex';
+    toast.style.opacity = '1';
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.style.display = 'none', 300);
+    }, 3500);
+}
+
+
+// ==========================================
+// 13. AGORA VIDEO CALLING ENGINE 
 // ==========================================
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
@@ -1258,6 +1283,8 @@ let options = {
 
 let isAudioMuted = false;
 let isVideoMuted = false;
+let noCameraDetected = false;
+let isCallConnected = false;
 
 // Audio Handlers
 let isCallRinging = false;
@@ -1316,9 +1343,8 @@ async function startVideoCall() {
     options.uid = currentUserId; 
 
     document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('call-time').innerText = "Calling...";
     document.getElementById('video-call-overlay').style.display = 'flex';
-
-    startCallTimer();
 
     // Send invite and start playing dialing sound
     const messageContent = `[CALL_INVITE]:${roomName}`;
@@ -1328,7 +1354,6 @@ async function startVideoCall() {
     loadChatMessages(currentChatUserId);
     
     playDialtone();
-
     await joinCall();
 }
 
@@ -1342,8 +1367,9 @@ async function joinVideoRoomFromInvite(roomName) {
     options.uid = currentUserId;
 
     document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('call-time').innerText = "Connecting...";
     document.getElementById('video-call-overlay').style.display = 'flex';
-    startCallTimer();
+    
     await joinCall();
 }
 
@@ -1357,6 +1383,13 @@ async function joinCall() {
         
         // They picked up! Stop dialing.
         stopDialtone();
+
+        // ** PERFECT TIMER SYNC **
+        // This only fires when the two users have actually connected
+        if (!isCallConnected) {
+            startCallTimer();
+            isCallConnected = true;
+        }
 
         if (mediaType === "video") {
             if (document.getElementById(`player-${user.uid}`) === null) {
@@ -1385,14 +1418,28 @@ async function joinCall() {
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
 
     try {
+        noCameraDetected = false; // Reset just in case they plugged one in
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         rtc.localVideoTrack.play("local-player");
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
     } catch (error) {
         if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
+            
+            noCameraDetected = true;
+            
+            // Force the UI button to look disabled
+            const camBtn = document.getElementById('btn-cam');
+            if(camBtn) {
+                camBtn.classList.add('active-off');
+                camBtn.innerHTML = `<i data-lucide="video-off" style="width: 20px; height: 20px;"></i>`;
+            }
+
             const localPlayer = document.getElementById("local-player");
             localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
             lucide.createIcons(); 
+            
+            showToast("Camera not detected. Falling back to audio-only.");
+
             try {
                 rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
                 await rtc.client.publish([rtc.localAudioTrack]);
@@ -1415,7 +1462,26 @@ async function leaveCall() {
 
     document.getElementById('video-call-overlay').style.display = 'none';
     document.getElementById("remote-playerlist").innerHTML = ""; 
+    
     stopCallTimer();
+
+    // Reset globals for next call
+    isAudioMuted = false;
+    isVideoMuted = false;
+    noCameraDetected = false;
+    isCallConnected = false;
+    
+    const camBtn = document.getElementById('btn-cam');
+    if(camBtn) {
+        camBtn.classList.remove('active-off');
+        camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
+    }
+    const micBtn = document.getElementById('btn-mic');
+    if(micBtn) {
+        micBtn.classList.remove('active-off');
+        micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
 }
 
 // 5. Button Actions (Mic & Camera)
@@ -1436,6 +1502,11 @@ function toggleMic() {
 }
 
 function toggleCam() {
+    if(noCameraDetected) {
+        showToast("Cannot toggle. No camera detected on your device.");
+        return;
+    }
+    
     if(!rtc.localVideoTrack) return;
     isVideoMuted = !isVideoMuted;
     rtc.localVideoTrack.setMuted(isVideoMuted);
@@ -1456,7 +1527,7 @@ let callInterval;
 function startCallTimer() {
     let seconds = 0;
     const timeDisplay = document.getElementById('call-time');
-    timeDisplay.innerText = "00:00";
+    timeDisplay.innerText = "00:00"; // Reset text to 0 immediately
     
     callInterval = setInterval(() => {
         seconds++;
@@ -1471,7 +1542,7 @@ function stopCallTimer() {
 }
 
 // ==========================================
-// 13. GLOBAL INCOMING CALL POPUP LOGIC (LIGHT THEME)
+// 14. GLOBAL INCOMING CALL POPUP LOGIC (LIGHT THEME)
 // ==========================================
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
