@@ -1143,9 +1143,8 @@ function setupRealtimeListeners() {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         
-                        // IF WE ARE DIALING, AND THEY SENT A MESSAGE, THEY REJECTED THE CALL.
-                        // Make sure it wasn't just a system sync message
-                        if (isCallDialing && currentChatUserId == data.sender_id && !data.content.startsWith('[')) {
+                        // IF WE ARE WAITING FOR THEM TO PICK UP AND THEY SEND A MESSAGE -> THEY REJECTED IT.
+                        if (isWaitingForPickup && currentChatUserId == data.sender_id && !data.content.startsWith('[')) {
                             cleanupVideoEngine(); 
                         }
 
@@ -1162,7 +1161,7 @@ function setupRealtimeListeners() {
                         
                         // Catch the Mutual End Call Signal
                         else if (data.content.startsWith('[CALL_ENDED]:')) {
-                            if (isCallConnected || isCallDialing || isCallRinging) {
+                            if (isCallConnected || isWaitingForPickup || isCallRinging) {
                                 cleanupVideoEngine();
                             }
                         }
@@ -1314,25 +1313,25 @@ let isAudioMuted = false;
 let isVideoMuted = false;
 let noCameraDetected = false;
 let isCallConnected = false;
+let isWaitingForPickup = false;
 
-// Audio Handlers (Using highly reliable Wikimedia public domain files)
+// --- UPDATED AUDIO CUES ---
 let isCallRinging = false;
-let isCallDialing = false;
 
-const ringAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/c/c4/Telephone_ring_2.ogg');
+// Generic electronic pulse for incoming calls
+const ringAudio = new Audio('https://actions.google.com/sounds/v1/communications/incoming_phone_call.ogg');
 ringAudio.loop = true;
 
-const dialAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/e/e5/Dial_tone.ogg');
-dialAudio.loop = true;
+// Satisfying Discord-style "Bloop" for when the connection goes live
+const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
 
 function playRingtone() { 
     isCallRinging = true; 
     ringAudio.currentTime = 0;
-    // Catch autoplay rejections gracefully instead of throwing console errors
     let playPromise = ringAudio.play();
     if (playPromise !== undefined) {
         playPromise.catch(error => {
-            console.log("Autoplay policy blocked ringtone. User must interact with document first.");
+            console.log("Browser autoplay policy blocked ringtone. User must click anywhere on page to unlock audio.");
         });
     }
 }
@@ -1342,20 +1341,9 @@ function stopRingtone() {
     ringAudio.currentTime = 0; 
 }
 
-function playDialtone() { 
-    isCallDialing = true; 
-    dialAudio.currentTime = 0;
-    let playPromise = dialAudio.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.log("Autoplay policy blocked dialtone.");
-        });
-    }
-}
-function stopDialtone() { 
-    isCallDialing = false; 
-    dialAudio.pause(); 
-    dialAudio.currentTime = 0; 
+function playConnectSound() {
+    connectAudio.currentTime = 0;
+    connectAudio.play().catch(e => console.log("Connect sound blocked"));
 }
 
 
@@ -1375,9 +1363,7 @@ async function fetchAgoraToken(channelName) {
 async function startVideoCall() {
     if (!currentChatUserId) return;
     
-    // Play dialtone IMMEDIATELY to bypass strict async autoplay blocks
-    playDialtone();
-    
+    isWaitingForPickup = true;
     const currentUserId = localStorage.getItem('currentUserId');
 
     const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
@@ -1385,7 +1371,7 @@ async function startVideoCall() {
 
     const token = await fetchAgoraToken(roomName);
     if (!token) {
-        stopDialtone();
+        isWaitingForPickup = false;
         return;
     }
     
@@ -1430,14 +1416,13 @@ async function joinCall() {
     rtc.client.on("user-published", async (user, mediaType) => {
         await rtc.client.subscribe(user, mediaType);
         
-        // They picked up! Stop dialing.
-        stopDialtone();
+        isWaitingForPickup = false; // They answered!
 
-        // ** PERFECT TIMER SYNC **
-        // This only fires when the two users have actually connected
+        // ** PERFECT TIMER SYNC & CONNECT SOUND **
         if (!isCallConnected) {
             startCallTimer();
             isCallConnected = true;
+            playConnectSound(); // Play the Discord-style chime!
         }
 
         if (mediaType === "video") {
@@ -1460,7 +1445,7 @@ async function joinCall() {
 
     // Listen for when the OTHER user leaves ungracefully (tab closed, network dropped)
     rtc.client.on("user-left", (user) => {
-        // Fetch the active chat name from the UI instead of showing a generic message
+        // Fetch the active chat name to display a personal disconnect message
         const chatName = document.getElementById('chat-header-name').innerText || "The other user";
         showToast(`${chatName} disconnected.`);
         
@@ -1519,7 +1504,7 @@ async function endCallButtonAction() {
             receiver_id: currentChatUserId, 
             content: `[CALL_ENDED]:${durationStr}`
         }]);
-    } else if (isCallDialing && currentChatUserId) {
+    } else if (isWaitingForPickup && currentChatUserId) {
         // We cancelled the call before they picked up
         const currentUserId = localStorage.getItem('currentUserId');
         await supabaseClient.from('messages').insert([{
@@ -1534,7 +1519,6 @@ async function endCallButtonAction() {
 
 // Handles the actual hardware cleanup and UI reset for both users
 async function cleanupVideoEngine() {
-    stopDialtone();
     stopRingtone();
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
@@ -1554,7 +1538,7 @@ async function cleanupVideoEngine() {
     isVideoMuted = false;
     noCameraDetected = false;
     isCallConnected = false;
-    isCallDialing = false;
+    isWaitingForPickup = false;
     isCallRinging = false;
     
     const camBtn = document.getElementById('btn-cam');
