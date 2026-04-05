@@ -173,7 +173,6 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
-    // Fetch Skill, User, Profile, and Certificate data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
@@ -203,7 +202,6 @@ async function openSkillDetailModal(skillId) {
     else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
     else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
-    // Format Wanted Skills
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
         const skillsArray = user.profiles[0].wanted_skills.split(',');
@@ -250,7 +248,7 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function connectWithUserFromModal(receiverId, skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); // Refresh modal instantly
+    openSkillDetailModal(skillId); 
 }
 
 // --- POSTING A SKILL ---
@@ -317,7 +315,6 @@ async function submitPostSkill() {
 // ==========================================
 let isLoginMode = true;
 
-// Trigger Supabase's native Google OAuth
 window.signInWithGoogle = async function() {
     const { data, error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
@@ -328,9 +325,7 @@ window.signInWithGoogle = async function() {
     if (error) showAuthMessage("Error connecting to Google.", true);
 }
 
-// The "Bridge": This catches the Google redirect, checks the custom app_users table, and syncs them
 window.checkOAuthSession = async function() {
-    // This tells Supabase to read the #access_token from the URL if it exists
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     
     if (session && session.user) {
@@ -340,20 +335,17 @@ window.checkOAuthSession = async function() {
         const email = session.user.email;
         let name = session.user.user_metadata.full_name || session.user.user_metadata.name || email.split('@')[0];
 
-        // 1. Check if user already exists in our CUSTOM app_users table
         const { data: existingUsers } = await supabaseClient.from('app_users').select('*').eq('email', email);
 
         let localUser;
         if (existingUsers && existingUsers.length > 0) {
             localUser = existingUsers[0];
         } else {
-            // 2. User is new! Create their custom app_users profile
             const uniqueUsername = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
-            
             const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ 
                 email: email, 
                 username: uniqueUsername, 
-                password: 'google_oauth_user_' + Date.now() // Dummy password for custom table
+                password: 'google_oauth_user_' + Date.now() 
             }]).select().single();
             
             if(newUser) {
@@ -362,7 +354,6 @@ window.checkOAuthSession = async function() {
             }
         }
 
-        // 3. Log them in normally
         if (localUser) {
             localStorage.setItem('currentUserId', localUser.id);
             localStorage.setItem('currentUser', localUser.username);
@@ -476,7 +467,6 @@ let currentChatUserId = null;
 let activeContextMenuMsgId = null;
 let activeContextMenuMsgContent = null;
 
-// Hide the right-click menu if the user clicks anywhere else on the screen
 document.addEventListener('click', () => {
     const menu = document.getElementById('msg-context-menu');
     if (menu) menu.style.display = 'none';
@@ -622,17 +612,17 @@ async function loadChatMessages(otherUserId) {
 }
 
 function createMessageHtml(msg, isSender) {
-    const align = isSender ? 'align-self: flex-end;' : 'align-self: flex-start;';
+    let align = isSender ? 'align-self: flex-end;' : 'align-self: flex-start;';
     let bg = isSender ? 'background: #dcfce7; border: 1px solid #bbf7d0;' : 'background: #ffffff; border: 1px solid #e5e7eb;';
     const radius = isSender ? 'border-radius: 12px 12px 0 12px;' : 'border-radius: 12px 12px 12px 0;';
     
-    // Format timestamp
     const date = new Date(msg.created_at || Date.now());
     const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     let contentHtml = '';
     let metaHtml = '';
     let rightClickEvent = '';
+    let maxW = '70%';
 
     // Handle Soft Deleted Messages
     if (msg.is_deleted) {
@@ -654,19 +644,23 @@ function createMessageHtml(msg, isSender) {
     else if (msg.content.startsWith('[CALL_ENDED]:')) {
         const parts = msg.content.split(':');
         const duration = parts.length >= 3 ? parts[1] + ":" + parts[2] : "Unknown";
-        contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4b5563;">
-                        <i data-lucide="phone" style="width:16px; height:16px;"></i> Call ended • ${duration}
+        contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 500; color: #4b5563;">
+                        <i data-lucide="phone" style="width:16px; height:16px;"></i> Call lasted ${duration}
                        </div>`;
-        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: center;">${timeString}</span>`;
         bg = 'background: #f3f4f6; border: 1px solid #e5e7eb;';
+        align = 'align-self: center;';
+        maxW = '85%';
         rightClickEvent = ''; 
     }
     else if (msg.content === '[CALL_MISSED]') {
-        contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #ef4444;">
+        contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 500; color: #ef4444;">
                         <i data-lucide="phone-missed" style="width:16px; height:16px;"></i> Missed Call
                        </div>`;
-        metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
+        metaHtml = `<span style="font-size: 0.7rem; color: #ef4444; margin-top: 4px; display: block; text-align: center; opacity: 0.8;">${timeString}</span>`;
         bg = 'background: #fef2f2; border: 1px solid #fecaca;';
+        align = 'align-self: center;';
+        maxW = '85%';
         rightClickEvent = ''; 
     }
     // Normal Message
@@ -682,7 +676,7 @@ function createMessageHtml(msg, isSender) {
     }
     
     return `
-        <div ${rightClickEvent} style="${align} ${bg} ${radius} padding: 10px 15px; max-width: 70%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827; cursor: ${isSender && !msg.is_deleted && rightClickEvent !== '' ? 'context-menu' : 'default'};">
+        <div ${rightClickEvent} style="${align} ${bg} ${radius} padding: 10px 15px; max-width: ${maxW}; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 5px; font-size: 0.95rem; word-wrap: break-word; color: #111827; cursor: ${isSender && !msg.is_deleted && rightClickEvent !== '' ? 'context-menu' : 'default'};">
             ${contentHtml}
             ${metaHtml}
         </div>
@@ -697,7 +691,6 @@ async function sendChatMessage() {
     if (!content || !currentChatUserId) return;
     input.value = ''; 
     
-    // Insert into DB
     const { error } = await supabaseClient.from('messages').insert([{
         sender_id: currentUserId,
         receiver_id: currentChatUserId,
@@ -1322,19 +1315,26 @@ let isVideoMuted = false;
 let noCameraDetected = false;
 let isCallConnected = false;
 
-// Audio Handlers
+// Audio Handlers (Using highly reliable Wikimedia public domain files)
 let isCallRinging = false;
 let isCallDialing = false;
 
-const ringAudio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg');
+const ringAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/c/c4/Telephone_ring_2.ogg');
 ringAudio.loop = true;
 
-const dialAudio = new Audio('https://actions.google.com/sounds/v1/communications/calling_connect_beep.ogg');
+const dialAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/e/e5/Dial_tone.ogg');
 dialAudio.loop = true;
 
 function playRingtone() { 
     isCallRinging = true; 
-    ringAudio.play().catch(e => console.log("Browser autoplay policy blocked ringtone")); 
+    ringAudio.currentTime = 0;
+    // Catch autoplay rejections gracefully instead of throwing console errors
+    let playPromise = ringAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.log("Autoplay policy blocked ringtone. User must interact with document first.");
+        });
+    }
 }
 function stopRingtone() { 
     isCallRinging = false; 
@@ -1344,7 +1344,13 @@ function stopRingtone() {
 
 function playDialtone() { 
     isCallDialing = true; 
-    dialAudio.play().catch(e => console.log("Browser autoplay policy blocked dialtone")); 
+    dialAudio.currentTime = 0;
+    let playPromise = dialAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => {
+            console.log("Autoplay policy blocked dialtone.");
+        });
+    }
 }
 function stopDialtone() { 
     isCallDialing = false; 
@@ -1368,13 +1374,21 @@ async function fetchAgoraToken(channelName) {
 // 2. Trigger the Call (Caller Side)
 async function startVideoCall() {
     if (!currentChatUserId) return;
+    
+    // Play dialtone IMMEDIATELY to bypass strict async autoplay blocks
+    playDialtone();
+    
     const currentUserId = localStorage.getItem('currentUserId');
 
     const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
     options.channel = roomName;
 
     const token = await fetchAgoraToken(roomName);
-    if (!token) return;
+    if (!token) {
+        stopDialtone();
+        return;
+    }
+    
     options.token = token;
     options.uid = currentUserId; 
 
@@ -1382,14 +1396,13 @@ async function startVideoCall() {
     document.getElementById('call-time').innerText = "Calling...";
     document.getElementById('video-call-overlay').style.display = 'flex';
 
-    // Send invite and start playing dialing sound
+    // Send invite
     const messageContent = `[CALL_INVITE]:${roomName}`;
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
     }]);
     loadChatMessages(currentChatUserId);
     
-    playDialtone();
     await joinCall();
 }
 
@@ -1445,12 +1458,15 @@ async function joinCall() {
         }
     });
 
-    // Listen for when the OTHER user leaves ungracefully (tab closed)
+    // Listen for when the OTHER user leaves ungracefully (tab closed, network dropped)
     rtc.client.on("user-left", (user) => {
-        showToast("The other user disconnected.");
+        // Fetch the active chat name from the UI instead of showing a generic message
+        const chatName = document.getElementById('chat-header-name').innerText || "The other user";
+        showToast(`${chatName} disconnected.`);
+        
         setTimeout(() => {
             endCallButtonAction(); 
-        }, 1000);
+        }, 1500);
     });
 
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
