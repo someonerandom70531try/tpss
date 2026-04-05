@@ -173,7 +173,6 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
-    // Fetch Skill, User, Profile, and Certificate data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
@@ -203,7 +202,6 @@ async function openSkillDetailModal(skillId) {
     else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
     else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
-    // Format Wanted Skills
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
         const skillsArray = user.profiles[0].wanted_skills.split(',');
@@ -250,7 +248,7 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function connectWithUserFromModal(receiverId, skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); // Refresh modal instantly
+    openSkillDetailModal(skillId); 
 }
 
 // --- POSTING A SKILL ---
@@ -1145,12 +1143,10 @@ function setupRealtimeListeners() {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
                         
-                        // IF WE ARE WAITING FOR THEM TO PICK UP AND THEY SEND A MESSAGE -> THEY REJECTED IT.
                         if (isWaitingForPickup && currentChatUserId == data.sender_id && !data.content.startsWith('[')) {
                             cleanupVideoEngine(); 
                         }
 
-                        // Catch the special CALL_INVITE signaling tag
                         if (data.content.startsWith('[CALL_INVITE]:')) {
                             const roomName = data.content.split(':')[1];
                             supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
@@ -1160,14 +1156,11 @@ function setupRealtimeListeners() {
                                 }
                             });
                         }
-                        
-                        // Catch the Mutual End Call Signal
                         else if (data.content.startsWith('[CALL_ENDED]:')) {
                             if (isCallConnected || isWaitingForPickup) {
                                 cleanupVideoEngine();
                             }
                         }
-                        // Catch Missed Call Cancelation
                         else if (data.content === '[CALL_MISSED]') {
                             const popup = document.getElementById('incoming-call-popup');
                             if(popup) popup.remove();
@@ -1234,7 +1227,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
-    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
         
@@ -1293,14 +1285,16 @@ function showToast(message) {
 
 
 // ==========================================
-// 13. AGORA VIDEO CALLING ENGINE 
+// 13. AGORA VIDEO CALLING ENGINE (Dual Client Screen Share)
 // ==========================================
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
 let rtc = {
     localAudioTrack: null,
     localVideoTrack: null,
-    client: null
+    client: null,
+    screenClient: null,
+    screenTrack: null
 };
 
 let options = {
@@ -1315,6 +1309,7 @@ let isVideoMuted = false;
 let noCameraDetected = false;
 let isCallConnected = false;
 let isWaitingForPickup = false;
+let isScreenSharing = false;
 
 // Satisfying Discord-style "Bloop" for when the connection goes live
 const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
@@ -1389,29 +1384,30 @@ async function joinVideoRoomFromInvite(roomName) {
     await joinCall();
 }
 
-// 3. Connect to Agora (Hardware Bulletproof Version)
+// 3. Connect to Agora
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
-    // Listen for when the OTHER user joins and turns on their camera
+    // Listen for when the OTHER user joins and turns on their camera OR screen share
     rtc.client.on("user-published", async (user, mediaType) => {
         await rtc.client.subscribe(user, mediaType);
         
         isWaitingForPickup = false; // They answered!
 
-        // ** PERFECT TIMER SYNC & CONNECT SOUND **
         if (!isCallConnected) {
             startCallTimer();
             isCallConnected = true;
-            playConnectSound(); // Play the Discord-style chime!
+            playConnectSound(); 
         }
 
         if (mediaType === "video") {
+            // Because flex is active, adding a second video (like a screen share) will smoothly place them side-by-side!
             if (document.getElementById(`player-${user.uid}`) === null) {
                 const playerContainer = document.createElement("div");
                 playerContainer.id = `player-${user.uid}`;
-                playerContainer.style.width = "100%";
+                playerContainer.style.flex = "1";
                 playerContainer.style.height = "100%";
+                playerContainer.style.minWidth = "0"; // prevents flexbox blowout
                 playerContainer.style.background = "#3c4043";
                 playerContainer.style.borderRadius = "8px";
                 playerContainer.style.overflow = "hidden";
@@ -1424,15 +1420,22 @@ async function joinCall() {
         }
     });
 
-    // Listen for when the OTHER user leaves ungracefully (tab closed, network dropped)
+    // Listen for when the OTHER user stops their video (or screen share)
+    rtc.client.on("user-unpublished", user => {
+        const playerContainer = document.getElementById(`player-${user.uid}`);
+        if (playerContainer) playerContainer.remove();
+    });
+
     rtc.client.on("user-left", (user) => {
-        // Fetch the active chat name to display a personal disconnect message
-        const chatName = document.getElementById('chat-header-name').innerText || "The other user";
-        showToast(`${chatName} disconnected.`);
-        
-        setTimeout(() => {
-            endCallButtonAction(); 
-        }, 1500);
+        // If the screen share bot disconnects, don't show the toast. 
+        // We only care if the actual user disconnects (their ID matches the active chat).
+        if (user.uid == currentChatUserId) {
+            const chatName = document.getElementById('chat-header-name').innerText || "The other user";
+            showToast(`${chatName} disconnected.`);
+            setTimeout(() => {
+                endCallButtonAction(); 
+            }, 1500);
+        }
     });
 
     await rtc.client.join(options.appId, options.channel, options.token, options.uid);
@@ -1444,10 +1447,8 @@ async function joinCall() {
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
     } catch (error) {
         if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
-            
             noCameraDetected = true;
             
-            // Force the UI button to look disabled
             const camBtn = document.getElementById('btn-cam');
             if(camBtn) {
                 camBtn.classList.add('active-off');
@@ -1474,7 +1475,6 @@ async function joinCall() {
 // 4. End Call Logic & Clean Up
 async function endCallButtonAction() {
     if (isCallConnected && currentChatUserId) {
-        // Send actual duration to the chat
         const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
         const secs = String(callSeconds % 60).padStart(2, '0');
         const durationStr = `${mins}:${secs}`;
@@ -1486,7 +1486,6 @@ async function endCallButtonAction() {
             content: `[CALL_ENDED]:${durationStr}`
         }]);
     } else if (isWaitingForPickup && currentChatUserId) {
-        // We cancelled the call before they picked up
         const currentUserId = localStorage.getItem('currentUserId');
         await supabaseClient.from('messages').insert([{
             sender_id: currentUserId, 
@@ -1498,8 +1497,8 @@ async function endCallButtonAction() {
     cleanupVideoEngine();
 }
 
-// Handles the actual hardware cleanup and UI reset for both users
 async function cleanupVideoEngine() {
+    await stopScreenShare(); // Ensure screen share drops if active
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
@@ -1513,7 +1512,6 @@ async function cleanupVideoEngine() {
     
     stopCallTimer();
 
-    // Reset globals for next call
     isAudioMuted = false;
     isVideoMuted = false;
     noCameraDetected = false;
@@ -1533,8 +1531,7 @@ async function cleanupVideoEngine() {
     lucide.createIcons();
 }
 
-
-// 5. Button Actions (Mic & Camera)
+// 5. Button Actions (Mic, Camera, & Screen Share)
 function toggleMic() {
     if(!rtc.localAudioTrack) return;
     isAudioMuted = !isAudioMuted;
@@ -1571,6 +1568,70 @@ function toggleCam() {
     }
     lucide.createIcons();
 }
+
+async function toggleScreenShare() {
+    if (!isCallConnected) {
+        showToast("You must be connected to share your screen.");
+        return;
+    }
+
+    if (!isScreenSharing) {
+        try {
+            // Create a screen track prioritizing text clarity
+            rtc.screenTrack = await AgoraRTC.createScreenVideoTrack({
+                encoderConfig: "1080p_1",
+                optimizationMode: "detail" 
+            });
+            
+            // Create the secondary "Screen Bot" client
+            rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+            
+            // Join the same channel. We pass `null` for UID so Agora assigns it a random ID
+            await rtc.screenClient.join(options.appId, options.channel, options.token, null);
+            await rtc.screenClient.publish(rtc.screenTrack);
+
+            isScreenSharing = true;
+            
+            const btn = document.getElementById('btn-screen');
+            if(btn) {
+                btn.style.background = "#8b5cf6"; // Highlight purple
+                btn.style.color = "white";
+            }
+
+            showToast("Screen sharing started.");
+
+            // Native browser "Stop Sharing" button listener
+            rtc.screenTrack.on("track-ended", () => {
+                stopScreenShare();
+            });
+
+        } catch (error) {
+            console.error("Screen sharing failed:", error);
+            showToast("Screen sharing was cancelled.");
+        }
+    } else {
+        stopScreenShare();
+    }
+}
+
+async function stopScreenShare() {
+    if (rtc.screenTrack) {
+        rtc.screenTrack.close();
+        rtc.screenTrack = null;
+    }
+    if (rtc.screenClient) {
+        await rtc.screenClient.leave();
+        rtc.screenClient = null;
+    }
+    isScreenSharing = false;
+    
+    const btn = document.getElementById('btn-screen');
+    if(btn) {
+        btn.style.background = "#3c4043";
+        btn.style.color = "white";
+    }
+}
+
 
 // 6. Simple Timer Logic
 let callInterval;
@@ -1649,7 +1710,6 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     document.body.insertAdjacentHTML('beforeend', html);
 }
 
-// Red Button Logic
 window.rejectCall = async function(callerId) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
@@ -1664,7 +1724,6 @@ window.rejectCall = async function(callerId) {
     }
 };
 
-// Dropdown Button Logic
 window.rejectCallWithReason = async function(callerId) {
     const select = document.getElementById(`reject-reason-${callerId}`);
     const reason = select.value;
@@ -1687,7 +1746,6 @@ window.rejectCallWithReason = async function(callerId) {
     }
 };
 
-// Green Button Logic
 window.acceptCall = function(callerId, roomName) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
