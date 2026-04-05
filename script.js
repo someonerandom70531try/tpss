@@ -173,6 +173,7 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
+    // Fetch Skill, User, Profile, and Certificate data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
@@ -202,6 +203,7 @@ async function openSkillDetailModal(skillId) {
     else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
     else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
+    // Format Wanted Skills
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
         const skillsArray = user.profiles[0].wanted_skills.split(',');
@@ -248,7 +250,7 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function connectWithUserFromModal(receiverId, skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); 
+    openSkillDetailModal(skillId); // Refresh modal instantly
 }
 
 // --- POSTING A SKILL ---
@@ -1161,7 +1163,7 @@ function setupRealtimeListeners() {
                         
                         // Catch the Mutual End Call Signal
                         else if (data.content.startsWith('[CALL_ENDED]:')) {
-                            if (isCallConnected || isWaitingForPickup || isCallRinging) {
+                            if (isCallConnected || isWaitingForPickup) {
                                 cleanupVideoEngine();
                             }
                         }
@@ -1169,8 +1171,7 @@ function setupRealtimeListeners() {
                         else if (data.content === '[CALL_MISSED]') {
                             const popup = document.getElementById('incoming-call-popup');
                             if(popup) popup.remove();
-                            stopRingtone();
-                            if (isCallRinging) {
+                            if (isCallConnected || isWaitingForPickup) {
                                 cleanupVideoEngine();
                             }
                         }
@@ -1315,35 +1316,15 @@ let noCameraDetected = false;
 let isCallConnected = false;
 let isWaitingForPickup = false;
 
-// --- UPDATED AUDIO CUES ---
-let isCallRinging = false;
-
-// Generic electronic pulse for incoming calls
-const ringAudio = new Audio('https://actions.google.com/sounds/v1/communications/incoming_phone_call.ogg');
-ringAudio.loop = true;
-
 // Satisfying Discord-style "Bloop" for when the connection goes live
 const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
 
-function playRingtone() { 
-    isCallRinging = true; 
-    ringAudio.currentTime = 0;
-    let playPromise = ringAudio.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(error => {
-            console.log("Browser autoplay policy blocked ringtone. User must click anywhere on page to unlock audio.");
-        });
-    }
-}
-function stopRingtone() { 
-    isCallRinging = false; 
-    ringAudio.pause(); 
-    ringAudio.currentTime = 0; 
-}
-
 function playConnectSound() {
     connectAudio.currentTime = 0;
-    connectAudio.play().catch(e => console.log("Connect sound blocked"));
+    let playPromise = connectAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(e => console.log("Connect sound blocked by browser autoplay policy."));
+    }
 }
 
 
@@ -1519,7 +1500,6 @@ async function endCallButtonAction() {
 
 // Handles the actual hardware cleanup and UI reset for both users
 async function cleanupVideoEngine() {
-    stopRingtone();
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
@@ -1539,7 +1519,6 @@ async function cleanupVideoEngine() {
     noCameraDetected = false;
     isCallConnected = false;
     isWaitingForPickup = false;
-    isCallRinging = false;
     
     const camBtn = document.getElementById('btn-cam');
     if(camBtn) {
@@ -1621,8 +1600,6 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
     if (existing) existing.remove();
 
-    playRingtone();
-
     const avatarHtml = avatarUrl 
         ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
         : `<div style="width: 70px; height: 70px; border-radius: 50%; background: ${getColorForUsername(callerName)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${callerName.charAt(0).toUpperCase()}</div>`;
@@ -1676,7 +1653,6 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
 window.rejectCall = async function(callerId) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone();
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -1700,7 +1676,6 @@ window.rejectCallWithReason = async function(callerId) {
     
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone();
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -1716,7 +1691,6 @@ window.rejectCallWithReason = async function(callerId) {
 window.acceptCall = function(callerId, roomName) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone();
     
     if (window.location.pathname.includes('messages.html')) {
         supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
