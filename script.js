@@ -533,8 +533,6 @@ async function loadChatConnections() {
                     lastMsgText = prefix + "📞 Call ended";
                 } else if (lastMsg.content === '[CALL_MISSED]') {
                     lastMsgText = prefix + "📞 Missed Call";
-                } else if (lastMsg.content === '[WB_OPEN]' || lastMsg.content === '[WB_CLOSE]') {
-                    lastMsgText = prefix + "Started a Whiteboard";
                 } else {
                     lastMsgText = prefix + lastMsg.content;
                 }
@@ -603,10 +601,7 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        // Skip rendering silent system pings for whiteboard state
-        if (msg.content !== '[WB_OPEN]' && msg.content !== '[WB_CLOSE]') {
-            chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
-        }
+        chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
     });
     
     chatArea.scrollTop = chatArea.scrollHeight;
@@ -705,6 +700,9 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
+// ==========================================
+// Right-Click Context Menu Actions
+// ==========================================
 window.showContextMenu = function(e, msgId, content) {
     e.preventDefault(); 
     activeContextMenuMsgId = msgId;
@@ -1016,4 +1014,874 @@ function showMorePublicCertificates() { visibleCertsCount += 2; renderPublicCert
 // ==========================================
 let cropper = null; let currentImageField = ''; 
 function openImageEditor(fieldName) { currentImageField = fieldName; document.getElementById('image-modal-title').innerText = fieldName === 'avatar_url' ? 'Update Profile Picture' : 'Update Banner'; document.getElementById('image-editor-modal').style.display = 'flex'; document.getElementById('image-source-options').style.display = 'block'; document.getElementById('cropper-container').style.display = 'none'; document.getElementById('save-cropped-btn').style.display = 'none'; document.getElementById('link-upload-input').value = ''; if(cropper) { cropper.destroy(); cropper = null; } }
-function closeImageEditor() { document.getElementById('image-editor-modal').style.display = 'none'; if(cropper
+function closeImageEditor() { document.getElementById('image-editor-modal').style.display = 'none'; if(cropper) { cropper.destroy(); cropper = null; } }
+function loadFileIntoCropper(event) { const file = event.target.files[0]; if(!file) return; initCropper(URL.createObjectURL(file)); }
+function loadLinkIntoCropper() { const url = document.getElementById('link-upload-input').value.trim(); if(!url) return; initCropper(url); }
+function initCropper(imageUrl) { const imageElement = document.getElementById('image-to-crop'); imageElement.crossOrigin = "anonymous"; imageElement.src = imageUrl; document.getElementById('image-source-options').style.display = 'none'; document.getElementById('cropper-container').style.display = 'block'; document.getElementById('save-cropped-btn').style.display = 'block'; const ratio = currentImageField === 'avatar_url' ? 1 / 1 : 4 / 1; if(cropper) cropper.destroy(); cropper = new Cropper(imageElement, { aspectRatio: ratio, viewMode: 1, background: false, zoomable: true, dragMode: 'move' }); }
+async function saveCroppedImage() {
+    if(!cropper) return; const saveBtn = document.getElementById('save-cropped-btn'); saveBtn.innerText = "Uploading..."; saveBtn.disabled = true;
+    cropper.getCroppedCanvas().toBlob(async (blob) => {
+        const userId = localStorage.getItem('currentUserId'); const fileName = `${userId}_${currentImageField}_${Date.now()}.jpg`;
+        const { error: uploadError } = await supabaseClient.storage.from('images').upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+        if (!uploadError) { const { data: urlData } = supabaseClient.storage.from('images').getPublicUrl(fileName); await supabaseClient.from('profiles').update({ [currentImageField]: urlData.publicUrl }).eq('user_id', userId); closeImageEditor(); loadUserProfile(); updateUIForUser(); }
+        saveBtn.innerText = "Save Image"; saveBtn.disabled = false;
+    }, 'image/jpeg');
+}
+
+// ==========================================
+// 10. CERTIFICATES ENGINE 
+// ==========================================
+let allCertificates = []; let visibleCertsCount = 2; 
+async function loadCertificates() {
+    const userId = localStorage.getItem('currentUserId'); if (!userId) return;
+    const { data: certs } = await supabaseClient.from('certificates').select('*').eq('user_id', userId).order('display_order', { ascending: true }).order('created_at', { ascending: false }); 
+    allCertificates = certs || []; renderCertificatesUI();
+}
+function renderCertificatesUI() {
+    const container = document.getElementById('profile-certificates-container'); const actionsDiv = document.getElementById('cert-actions'); const showMoreBtn = document.getElementById('cert-show-more-btn'); const showAllBtn = document.getElementById('cert-show-all-btn');
+    if (!container || !actionsDiv) return;
+    if (allCertificates.length === 0) { container.innerHTML = `<p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>`; actionsDiv.style.display = 'none'; return; }
+    const visibleCerts = allCertificates.slice(0, visibleCertsCount);
+    container.innerHTML = visibleCerts.map(cert => `<div class="cert-card-wrapper" data-id="${cert.id}" style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; width: 100%; display: flex; flex-direction: column; background: white; margin-bottom: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);"><div class="cert-actions-overlay" style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;"><button onclick="renameCertificate(${cert.id}, '${cert.title.replace(/'/g, "\\'")}')" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Rename"><i data-lucide="pencil" style="width: 16px; height: 16px; color: #4b5563;"></i></button><button onclick="deleteCertificate(${cert.id})" class="icon-btn" style="background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.15); padding: 6px;" title="Delete"><i data-lucide="x" style="width: 16px; height: 16px; color: #ef4444;"></i></button></div><a href="${cert.pdf_url}" target="_blank" style="display: block; width: 100%; background: #f9fafb; text-align: center;"><img src="${cert.thumbnail_url}" style="width: 100%; height: auto; max-height: 400px; object-fit: contain; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a><div style="padding: 15px; font-size: 1rem; font-weight: 500; text-align: center; color: #111827;">${cert.title}</div></div>`).join('');
+    lucide.createIcons(); actionsDiv.style.display = 'flex';
+    if (visibleCertsCount >= allCertificates.length) showMoreBtn.style.display = 'none'; else showMoreBtn.style.display = 'inline-block';
+    if (allCertificates.length > 2) showAllBtn.style.display = 'inline-block'; else showAllBtn.style.display = 'none';
+}
+function showMoreCertificates() { visibleCertsCount += 2; renderCertificatesUI(); }
+
+async function uploadCertificate(event) {
+    const file = event.target.files[0]; if (!file || file.type !== "application/pdf") return;
+    const modal = document.getElementById('custom-edit-modal'); document.getElementById('modal-title').innerText = "Name your Certificate"; document.getElementById('modal-input').value = ""; document.getElementById('modal-input').placeholder = "e.g., AWS Cloud Practitioner"; modal.style.display = 'flex';
+    document.getElementById('modal-save-btn').onclick = async function() { const title = document.getElementById('modal-input').value.trim(); if (!title) return; closeModal(); await processAndUploadCertificate(file, title); };
+    const cancelBtn = document.getElementById('modal-cancel-btn'); const originalCancel = cancelBtn.onclick; cancelBtn.onclick = function() { closeModal(); event.target.value = ''; cancelBtn.onclick = originalCancel; };
+}
+async function processAndUploadCertificate(file, title) {
+    const userId = localStorage.getItem('currentUserId'); const timestamp = Date.now(); const pdfPath = `${userId}/cert_${timestamp}.pdf`; const thumbPath = `${userId}/thumb_${timestamp}.jpg`;
+    document.getElementById('profile-certificates-container').innerHTML = `<p style="color: #8b5cf6; font-weight: 500; font-size: 0.95rem; text-align: center;">Processing PDF and uploading... Please wait.</p>`;
+    try {
+        const arrayBuffer = await file.arrayBuffer(); const pdf = await pdfjsLib.getDocument(arrayBuffer).promise; const page = await pdf.getPage(1); 
+        const viewport = page.getViewport({ scale: 1.5 }); const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); canvas.width = viewport.width; canvas.height = viewport.height; await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        const thumbBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        await supabaseClient.storage.from('certificates').upload(pdfPath, file); const { data: pdfUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(pdfPath);
+        await supabaseClient.storage.from('certificates').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' }); const { data: thumbUrlData } = supabaseClient.storage.from('certificates').getPublicUrl(thumbPath);
+        await supabaseClient.from('certificates').insert([{ user_id: userId, title: title, pdf_url: pdfUrlData.publicUrl, thumbnail_url: thumbUrlData.publicUrl, display_order: 0 }]); loadCertificates();
+    } catch (error) { console.error("Error:", error); loadCertificates(); }
+}
+function renameCertificate(id, currentTitle) {
+    const modal = document.getElementById('custom-edit-modal'); document.getElementById('modal-title').innerText = "Rename Certificate"; document.getElementById('modal-input').value = currentTitle; document.getElementById('modal-input').placeholder = "Enter new name..."; modal.style.display = 'flex';
+    document.getElementById('modal-save-btn').onclick = async function() { const newTitle = document.getElementById('modal-input').value.trim(); closeModal(); if (!newTitle || newTitle === currentTitle) return; await supabaseClient.from('certificates').update({ title: newTitle }).eq('id', id); loadCertificates(); };
+}
+async function deleteCertificate(id) { await supabaseClient.from('certificates').delete().eq('id', id); loadCertificates(); }
+
+function openAllCertsModal() {
+    const modal = document.getElementById('all-certs-modal'); const grid = document.getElementById('light-cert-grid'); const isPublicView = window.location.pathname.includes('view-profile.html');
+    grid.innerHTML = allCertificates.map(cert => `<div class="modal-cert-item" ${isPublicView ? '' : `data-id="${cert.id}" style="cursor: grab;"`} style="position: relative; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">${isPublicView ? '' : `<div style="position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); border-radius: 4px; padding: 2px; z-index: 5;"><i data-lucide="grip-horizontal" style="width: 16px; height: 16px; color: #6b7280;"></i></div>`}<a href="${cert.pdf_url}" target="_blank" style="display: block;"><img src="${cert.thumbnail_url}" style="width: 100%; height: 150px; object-fit: cover; border-bottom: 1px solid #e5e7eb;" alt="${cert.title}"></a><div style="padding: 12px; font-size: 0.85rem; text-align: center; color: #1f2937; font-weight: 500;">${cert.title}</div></div>`).join('');
+    modal.style.display = 'flex'; lucide.createIcons(); 
+    if (!isPublicView) {
+        if (window.modalCertSortable) window.modalCertSortable.destroy();
+        window.modalCertSortable = new Sortable(grid, { animation: 150, ghostClass: 'sortable-ghost', forceFallback: true, fallbackOnBody: true, onEnd: async function (evt) { const movedItem = allCertificates.splice(evt.oldIndex, 1)[0]; allCertificates.splice(evt.newIndex, 0, movedItem); for (let i = 0; i < allCertificates.length; i++) { allCertificates[i].display_order = i; await supabaseClient.from('certificates').update({ display_order: i }).eq('id', allCertificates[i].id); } renderCertificatesUI(); } });
+    }
+}
+function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
+
+
+// ==========================================
+// 11. PAGE LOAD & REALTIME LISTENERS
+// ==========================================
+function setupRealtimeListeners() {
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    supabaseClient
+        .channel('master-db-channel')
+        .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+            const table = payload.table;
+            const data = payload.new || payload.old;
+
+            if (table === 'skills') {
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+            }
+
+            if (table === 'connections' && currentUserId) {
+                if (data && (data.requester_id == currentUserId || data.receiver_id == currentUserId)) {
+                    updateRequestsBadge();
+                    loadTopConnections();
+                    const searchInput = document.getElementById('connection-search');
+                    if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput });
+                    if (document.getElementById('requests-modal') && document.getElementById('requests-modal').style.display === 'flex') openRequestsModal();
+                    if (document.getElementById('manage-connections-modal') && document.getElementById('manage-connections-modal').style.display === 'flex') openManageConnectionsModal();
+                }
+            }
+
+            if (table === 'profiles') {
+                if (payload.new && payload.new.user_id == currentUserId) updateUIForUser();
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+            }
+
+            if (table === 'app_users') {
+                if (payload.new && payload.new.id == currentUserId) {
+                    localStorage.setItem('currentUser', payload.new.username);
+                    updateUIForUser();
+                }
+                if (document.getElementById('profile-page-name')) loadUserProfile();
+                if (document.getElementById('public-page-name')) loadPublicProfile();
+                if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
+            }
+
+            if (table === 'messages' && currentUserId) {
+                if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
+                    if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
+                        
+                        if (isWaitingForPickup && currentChatUserId == data.sender_id && !data.content.startsWith('[')) {
+                            cleanupVideoEngine(); 
+                        }
+
+                        if (data.content.startsWith('[CALL_INVITE]:')) {
+                            const roomName = data.content.split(':')[1];
+                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
+                                if (caller) {
+                                    let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                                    showIncomingCallModal(data.sender_id, caller.username, avatar, roomName);
+                                }
+                            });
+                        }
+                        else if (data.content.startsWith('[CALL_ENDED]:')) {
+                            if (isCallConnected || isWaitingForPickup) {
+                                cleanupVideoEngine();
+                            }
+                        }
+                        else if (data.content === '[CALL_MISSED]') {
+                            const popup = document.getElementById('incoming-call-popup');
+                            if(popup) popup.remove();
+                            if (isCallConnected || isWaitingForPickup) {
+                                cleanupVideoEngine();
+                            }
+                        }
+
+                        if (currentChatUserId && data.sender_id == currentChatUserId) {
+                            supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
+                            const chatArea = document.getElementById('chat-messages-area');
+                            if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
+                            if (chatArea) {
+                                chatArea.innerHTML += createMessageHtml(data, false);
+                                chatArea.scrollTop = chatArea.scrollHeight;
+                                lucide.createIcons();
+                            }
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                        } else {
+                            updateMessagesBadge();
+                            if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                        }
+                    } else if (payload.eventType === 'UPDATE') {
+                         if (currentChatUserId && (data.sender_id == currentChatUserId || data.receiver_id == currentChatUserId)) {
+                             loadChatMessages(currentChatUserId);
+                         }
+                    } else if (data.sender_id == currentUserId && payload.eventType === 'INSERT') {
+                         if (window.location.pathname.includes('messages.html')) loadChatConnections();
+                    }
+                }
+            }
+        })
+        .subscribe();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSkills();
+    updateUIForUser();
+    updateRequestsBadge();
+    updateMessagesBadge();
+    
+    setupRealtimeListeners();
+
+    const track = document.getElementById('skills-carousel');
+    if (track) {
+        track.addEventListener('scroll', updateCarouselArrows);
+        window.addEventListener('resize', updateCarouselArrows);
+        
+        track.addEventListener('wheel', (e) => {
+            const isScrollable = track.scrollWidth > track.clientWidth;
+            if (isScrollable && e.deltaY !== 0) {
+                e.preventDefault(); 
+                
+                if (!isCarouselAnimating) {
+                    carouselTargetScroll = track.scrollLeft;
+                }
+                
+                carouselTargetScroll += e.deltaY * 1.5;
+                const maxScroll = track.scrollWidth - track.clientWidth;
+                carouselTargetScroll = Math.max(0, Math.min(carouselTargetScroll, maxScroll));
+
+                animateCarouselScroll(track);
+            }
+        }, { passive: false });
+    }
+    
+    if (window.location.pathname.includes('messages.html')) {
+        initMessagesPage();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinRoom = urlParams.get('joinCall');
+        const callerId = urlParams.get('callerId');
+        
+        if (joinRoom && callerId) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
+                if (caller) {
+                    let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                    setTimeout(() => {
+                        openChatWithUser(callerId, caller.username, avatar);
+                        joinVideoRoomFromInvite(joinRoom);
+                    }, 500); 
+                }
+            });
+        }
+    }
+    
+    if (document.getElementById('profile-page-name')) {
+        loadUserProfile();
+        loadCertificates(); 
+    }
+    if (window.location.pathname.includes('view-profile.html')) {
+        loadPublicProfile();
+        loadPublicCertificates();
+    }
+});
+
+
+// ==========================================
+// 12. UI HELPERS (TOASTS)
+// ==========================================
+function showToast(message) {
+    let toast = document.getElementById('custom-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'custom-toast';
+        toast.style.cssText = "position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #1f2937; color: white; padding: 12px 24px; border-radius: 8px; z-index: 10001; font-size: 0.95rem; font-weight: 500; display: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); transition: opacity 0.3s ease; display: flex; align-items: center; gap: 10px;";
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<i data-lucide="info" style="width: 18px; height: 18px; color: #60a5fa;"></i> ${message}`;
+    lucide.createIcons();
+    
+    toast.style.display = 'flex';
+    toast.style.opacity = '1';
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.style.display = 'none', 300);
+    }, 3500);
+}
+
+
+// ==========================================
+// 13. AGORA VIDEO CALLING ENGINE (Layout Manager)
+// ==========================================
+const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
+
+let rtc = {
+    localAudioTrack: null,
+    localVideoTrack: null,
+    client: null,
+    screenClient: null,
+    screenTrack: null
+};
+
+let options = {
+    appId: AGORA_APP_ID,
+    channel: null,
+    token: null,
+    uid: null
+};
+
+let isAudioMuted = false;
+let isVideoMuted = false;
+let noCameraDetected = false;
+let isCallConnected = false;
+let isWaitingForPickup = false;
+let isScreenSharing = false;
+
+const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
+
+function playConnectSound() {
+    connectAudio.currentTime = 0;
+    let playPromise = connectAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(e => console.log("Connect sound blocked by browser autoplay policy."));
+    }
+}
+
+async function fetchAgoraToken(channelName) {
+    try {
+        const response = await fetch(`/rtcToken?channelName=${channelName}&t=${Date.now()}`);
+        const data = await response.json();
+        return data.token;
+    } catch (error) {
+        console.error("Error fetching token:", error);
+        return null;
+    }
+}
+
+function generateSafeRoomName(id1, id2) {
+    const sortedIds = [String(id1), String(id2)].sort();
+    let safeName = `SkillSwap_${sortedIds[0]}_${sortedIds[1]}`.replace(/[^a-zA-Z0-9_]/g, '_');
+    return safeName.substring(0, 64);
+}
+
+// Layout Engine: Dynamically updates the DOM based on active screens/cameras
+function updateVideoLayout() {
+    const localCam = document.getElementById('local-player');
+    const localScreen = document.getElementById('local-screen-preview');
+    const remotePlayers = Array.from(document.querySelectorAll('[id^="player-"]'));
+    
+    const allBoxes = [localCam, localScreen, ...remotePlayers].filter(el => el !== null);
+    
+    const heroZone = document.getElementById('hero-zone');
+    const sidebarZone = document.getElementById('sidebar-zone');
+    const defaultZone = document.getElementById('default-zone');
+    const remotePlayerList = document.getElementById('remote-playerlist');
+
+    // Condition for Presentation Mode: A local screen exists, OR there are 2+ remote feeds
+    const hasScreenShare = localScreen !== null || remotePlayers.length > 1;
+
+    if (hasScreenShare) {
+        heroZone.style.display = 'block';
+        sidebarZone.style.display = 'flex';
+        defaultZone.style.display = 'none';
+
+        let currentHero = heroZone.children[0];
+        
+        // Auto-assign hero if empty
+        if (!currentHero) {
+            if (localScreen) {
+                currentHero = localScreen;
+            } else {
+                // Find the remote screen share (the one whose ID doesn't contain the active user ID)
+                const remoteScreen = remotePlayers.find(el => !el.id.includes(currentChatUserId));
+                currentHero = remoteScreen || remotePlayers[0] || localCam;
+            }
+        }
+
+        // Distribute boxes
+        allBoxes.forEach(box => {
+            box.style.cursor = 'pointer'; 
+            box.style.position = 'relative'; 
+            box.style.bottom = 'auto';
+            box.style.right = 'auto';
+            box.style.pointerEvents = 'auto';
+            box.style.boxShadow = 'none'; 
+
+            if (box === currentHero) {
+                heroZone.appendChild(box);
+                box.style.width = '100%';
+                box.style.height = '100%';
+                box.style.border = 'none';
+                box.style.borderRadius = '8px';
+            } else {
+                sidebarZone.appendChild(box);
+                box.style.width = '100%';
+                box.style.height = '160px'; 
+                box.style.flexShrink = '0';
+                box.style.border = '1px solid #5f6368';
+                box.style.borderRadius = '8px';
+            }
+            
+            box.onclick = () => swapToHero(box);
+        });
+
+    } else {
+        // DEFAULT MODE
+        heroZone.style.display = 'none';
+        sidebarZone.style.display = 'none';
+        defaultZone.style.display = 'flex';
+
+        if (localCam) {
+            defaultZone.appendChild(localCam); 
+            localCam.style.position = 'absolute';
+            localCam.style.bottom = '20px';
+            localCam.style.right = '20px';
+            localCam.style.width = '240px';
+            localCam.style.height = '160px';
+            localCam.style.border = '1px solid #5f6368';
+            localCam.style.borderRadius = '8px';
+            localCam.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+            localCam.style.zIndex = '10';
+            localCam.style.cursor = 'default';
+            localCam.onclick = null; 
+        }
+
+        if (remotePlayers.length > 0) {
+            remotePlayerList.appendChild(remotePlayers[0]);
+            remotePlayers[0].style.width = '100%';
+            remotePlayers[0].style.height = '100%';
+            remotePlayers[0].style.position = 'relative';
+            remotePlayers[0].style.border = 'none';
+            remotePlayers[0].style.borderRadius = '8px';
+            remotePlayers[0].style.cursor = 'default';
+            remotePlayers[0].onclick = null;
+        }
+    }
+}
+
+// Click-to-swap logic for the Presentation Gallery
+function swapToHero(clickedBox) {
+    if (clickedBox.parentElement.id === 'sidebar-zone') {
+        const heroZone = document.getElementById('hero-zone');
+        const sidebarZone = document.getElementById('sidebar-zone');
+        const currentHero = heroZone.children[0];
+
+        if (currentHero) {
+            sidebarZone.insertBefore(currentHero, clickedBox); 
+            currentHero.style.width = '100%';
+            currentHero.style.height = '160px';
+            currentHero.style.flexShrink = '0';
+            currentHero.style.border = '1px solid #5f6368';
+        }
+
+        heroZone.appendChild(clickedBox);
+        clickedBox.style.width = '100%';
+        clickedBox.style.height = '100%';
+        clickedBox.style.border = 'none';
+    }
+}
+
+async function startVideoCall() {
+    if (!currentChatUserId) return;
+    
+    isWaitingForPickup = true;
+    const currentUserId = localStorage.getItem('currentUserId');
+
+    const roomName = generateSafeRoomName(currentUserId, currentChatUserId);
+    options.channel = roomName;
+
+    const token = await fetchAgoraToken(roomName);
+    if (!token) {
+        isWaitingForPickup = false;
+        return;
+    }
+    
+    options.token = token;
+
+    document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('call-time').innerText = "Calling...";
+    document.getElementById('video-call-overlay').style.display = 'flex';
+
+    const messageContent = `[CALL_INVITE]:${roomName}`;
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
+    }]);
+    loadChatMessages(currentChatUserId);
+    
+    await joinCall();
+}
+
+async function joinVideoRoomFromInvite(roomName) {
+    options.channel = roomName;
+    const token = await fetchAgoraToken(roomName);
+    if (!token) return;
+    options.token = token;
+
+    document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
+    document.getElementById('call-time').innerText = "Connecting...";
+    document.getElementById('video-call-overlay').style.display = 'flex';
+    
+    await joinCall();
+}
+
+async function joinCall() {
+    rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+    rtc.client.on("user-published", async (user, mediaType) => {
+        await rtc.client.subscribe(user, mediaType);
+        
+        isWaitingForPickup = false; 
+
+        if (!isCallConnected) {
+            startCallTimer();
+            isCallConnected = true;
+            playConnectSound(); 
+        }
+
+        if (mediaType === "video") {
+            if (document.getElementById(`player-${user.uid}`) === null) {
+                const playerContainer = document.createElement("div");
+                playerContainer.id = `player-${user.uid}`;
+                playerContainer.style.background = "#202124"; 
+                document.body.appendChild(playerContainer); // Temp append
+            }
+            // FIT CONTAIN ensures video scales without cropping
+            user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
+            updateVideoLayout();
+        }
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+        }
+    });
+
+    rtc.client.on("user-unpublished", user => {
+        const playerContainer = document.getElementById(`player-${user.uid}`);
+        if (playerContainer) playerContainer.remove();
+        updateVideoLayout();
+    });
+
+    rtc.client.on("user-left", (user) => {
+        // ONLY drop the call if the actual person disconnects
+        if (user.uid == currentChatUserId) {
+            const chatName = document.getElementById('chat-header-name').innerText || "The other user";
+            showToast(`${chatName} disconnected.`);
+            setTimeout(() => {
+                endCallButtonAction(); 
+            }, 1500);
+        }
+    });
+
+    options.uid = await rtc.client.join(options.appId, options.channel, options.token, null);
+
+    try {
+        noCameraDetected = false; 
+        [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        
+        const localPlayer = document.getElementById("local-player");
+        localPlayer.innerHTML = ""; 
+        
+        // Remove "No Camera" text if it was there
+        if (localPlayer.querySelector('i[data-lucide="video-off"]')) {
+            localPlayer.innerHTML = ""; 
+        }
+        
+        rtc.localVideoTrack.play("local-player", { fit: "cover" }); 
+        await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+        updateVideoLayout();
+    } catch (error) {
+        if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
+            noCameraDetected = true;
+            
+            const camBtn = document.getElementById('btn-cam');
+            if(camBtn) {
+                camBtn.classList.add('active-off');
+                camBtn.innerHTML = `<i data-lucide="video-off" style="width: 20px; height: 20px;"></i>`;
+            }
+
+            const localPlayer = document.getElementById("local-player");
+            localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
+            lucide.createIcons(); 
+            
+            showToast("Camera not detected. Falling back to audio-only.");
+
+            try {
+                rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                await rtc.client.publish([rtc.localAudioTrack]);
+            } catch (audioError) {
+                localPlayer.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="mic-off" style="width: 24px; height: 24px;"></i> No Hardware</div>`;
+                lucide.createIcons();
+            }
+        }
+    }
+}
+
+async function endCallButtonAction() {
+    if (isCallConnected && currentChatUserId) {
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
+        const durationStr = `${mins}:${secs}`;
+        
+        const currentUserId = localStorage.getItem('currentUserId');
+        await supabaseClient.from('messages').insert([{
+            sender_id: currentUserId, 
+            receiver_id: currentChatUserId, 
+            content: `[CALL_ENDED]:${durationStr}`
+        }]);
+    } else if (isWaitingForPickup && currentChatUserId) {
+        const currentUserId = localStorage.getItem('currentUserId');
+        await supabaseClient.from('messages').insert([{
+            sender_id: currentUserId, 
+            receiver_id: currentChatUserId, 
+            content: `[CALL_MISSED]`
+        }]);
+    }
+    
+    cleanupVideoEngine();
+}
+
+async function cleanupVideoEngine() {
+    await stopScreenShare(); 
+    
+    if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
+    if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
+    if (rtc.client) { await rtc.client.leave(); }
+
+    const overlay = document.getElementById('video-call-overlay');
+    if (overlay) overlay.style.display = 'none';
+    
+    const remoteList = document.getElementById("remote-playerlist");
+    if (remoteList) remoteList.innerHTML = ""; 
+    
+    const heroZone = document.getElementById("hero-zone");
+    if (heroZone) heroZone.innerHTML = "";
+    
+    const sidebarZone = document.getElementById("sidebar-zone");
+    if (sidebarZone) sidebarZone.innerHTML = "";
+
+    stopCallTimer();
+
+    isAudioMuted = false;
+    isVideoMuted = false;
+    noCameraDetected = false;
+    isCallConnected = false;
+    isWaitingForPickup = false;
+    
+    const camBtn = document.getElementById('btn-cam');
+    if(camBtn) {
+        camBtn.classList.remove('active-off');
+        camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
+    }
+    const micBtn = document.getElementById('btn-mic');
+    if(micBtn) {
+        micBtn.classList.remove('active-off');
+        micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
+}
+
+function toggleMic() {
+    if(!rtc.localAudioTrack) return;
+    isAudioMuted = !isAudioMuted;
+    rtc.localAudioTrack.setMuted(isAudioMuted);
+    
+    const btn = document.getElementById('btn-mic');
+    if(isAudioMuted) {
+        btn.classList.add('active-off');
+        btn.innerHTML = `<i data-lucide="mic-off" style="width: 20px; height: 20px;"></i>`;
+    } else {
+        btn.classList.remove('active-off');
+        btn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
+}
+
+function toggleCam() {
+    if(noCameraDetected) {
+        showToast("Cannot toggle. No camera detected on your device.");
+        return;
+    }
+    
+    if(!rtc.localVideoTrack) return;
+    isVideoMuted = !isVideoMuted;
+    rtc.localVideoTrack.setMuted(isVideoMuted);
+    
+    const btn = document.getElementById('btn-cam');
+    if(isVideoMuted) {
+        btn.classList.add('active-off');
+        btn.innerHTML = `<i data-lucide="video-off" style="width: 20px; height: 20px;"></i>`;
+    } else {
+        btn.classList.remove('active-off');
+        btn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
+    }
+    lucide.createIcons();
+}
+
+async function toggleScreenShare() {
+    if (!isCallConnected) {
+        showToast("You must be connected to share your screen.");
+        return;
+    }
+
+    if (!isScreenSharing) {
+        try {
+            rtc.screenTrack = await AgoraRTC.createScreenVideoTrack();
+            rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+            const screenToken = await fetchAgoraToken(options.channel);
+            
+            await rtc.screenClient.join(options.appId, options.channel, screenToken, null);
+            await rtc.screenClient.publish(rtc.screenTrack);
+
+            isScreenSharing = true;
+            
+            const previewContainer = document.createElement("div");
+            previewContainer.id = `local-screen-preview`;
+            previewContainer.style.background = "#202124";
+            document.body.appendChild(previewContainer); 
+            
+            // FIT CONTAIN: Ensures local preview isn't cropped
+            rtc.screenTrack.play(previewContainer, { fit: "contain" });
+            updateVideoLayout(); // Trigger Layout Engine!
+
+            const btn = document.getElementById('btn-screen');
+            if(btn) {
+                btn.style.background = "#8b5cf6"; 
+                btn.style.color = "white";
+            }
+
+            showToast("Screen sharing started.");
+
+            rtc.screenTrack.on("track-ended", () => {
+                stopScreenShare();
+            });
+
+        } catch (error) {
+            console.error("Screen sharing failed:", error);
+            if (error.name === "NotAllowedError" || error.message.includes("Permission denied")) {
+                showToast("Screen share cancelled. Make sure you click the picture of the screen before hitting Share!");
+            } else {
+                showToast("Screen sharing failed to start.");
+            }
+        }
+    } else {
+        stopScreenShare();
+    }
+}
+
+async function stopScreenShare() {
+    if (!isScreenSharing) return;
+    
+    if (rtc.screenTrack) {
+        rtc.screenTrack.close();
+        rtc.screenTrack = null;
+    }
+    if (rtc.screenClient) {
+        await rtc.screenClient.leave();
+        rtc.screenClient = null;
+    }
+    isScreenSharing = false;
+    
+    const preview = document.getElementById('local-screen-preview');
+    if (preview) preview.remove();
+    updateVideoLayout(); // Trigger Layout Engine to collapse back to default view
+    
+    const btn = document.getElementById('btn-screen');
+    if(btn) {
+        btn.style.background = ""; 
+        btn.style.color = "";
+    }
+}
+
+let callInterval;
+let callSeconds = 0;
+
+function startCallTimer() {
+    callSeconds = 0;
+    const timeDisplay = document.getElementById('call-time');
+    timeDisplay.innerText = "00:00"; 
+    
+    callInterval = setInterval(() => {
+        callSeconds++;
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
+        timeDisplay.innerText = `${mins}:${secs}`;
+    }, 1000);
+}
+
+function stopCallTimer() {
+    clearInterval(callInterval);
+}
+
+// ==========================================
+// 14. GLOBAL INCOMING CALL POPUP LOGIC 
+// ==========================================
+function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
+    const existing = document.getElementById('incoming-call-popup');
+    if (existing) existing.remove();
+
+    const avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
+        : `<div style="width: 70px; height: 70px; border-radius: 50%; background: ${getColorForUsername(callerName)}; color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${callerName.charAt(0).toUpperCase()}</div>`;
+
+    const html = `
+    <div id="incoming-call-popup" style="position: fixed; bottom: 30px; right: 30px; width: 280px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); z-index: 10000; padding: 25px 20px; text-align: center; color: #111827; font-family: 'Inter', sans-serif; animation: slideUp 0.3s ease-out;">
+        <style>
+            @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+            @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+            .call-btn { width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+            .call-btn:hover { transform: scale(1.1); }
+            .btn-accept { background: #22c55e; color: white; animation: pulseRing 2s infinite; }
+            .btn-reject { background: #ef4444; color: white; }
+            .quick-reply-select { width: 100%; margin-top: 15px; padding: 10px; border-radius: 6px; background: #f9fafb; color: #111827; border: 1px solid #d1d5db; font-size: 0.85rem; outline: none; appearance: none; cursor: pointer; }
+            .quick-reply-btn { margin-top: 15px; background: #f3f4f6; border: 1px solid #d1d5db; padding: 10px 12px; border-radius: 6px; color: #374151; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; }
+            .quick-reply-btn:hover { background: #e5e7eb; color: #111827; }
+        </style>
+        
+        <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+            ${avatarHtml}
+        </div>
+        <h3 style="margin: 0 0 5px 0; font-size: 1.25rem;">${callerName}</h3>
+        <p style="margin: 0 0 25px 0; color: #6b7280; font-size: 0.9rem;">Incoming Video Call...</p>
+        
+        <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 15px;">
+            <button class="call-btn btn-reject" onclick="rejectCall(${callerId})" title="Reject">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.59 13.41 12 12m0 0 1.41-1.41M12 12l1.41 1.41M12 12l-1.41-1.41M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <button class="call-btn btn-accept" onclick="acceptCall('${callerId}', '${roomName}')" title="Accept">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <select id="reject-reason-${callerId}" class="quick-reply-select">
+                <option value="">-- Or reply with a message --</option>
+                <option value="I'm busy right now, I'll call you back.">I'm busy right now</option>
+                <option value="Give me 15 minutes.">Give me 15 mins</option>
+                <option value="In a meeting, text me!">In a meeting</option>
+                <option value="Can we text instead?">Can we text instead?</option>
+            </select>
+            <button class="quick-reply-btn" onclick="rejectCallWithReason(${callerId})">Send</button>
+        </div>
+    </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+window.rejectCall = async function(callerId) {
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: callerId, content: "I'm busy right now."
+    }]);
+    
+    if (window.location.pathname.includes('messages.html') && currentChatUserId == callerId) {
+        loadChatMessages(callerId);
+    }
+};
+
+window.rejectCallWithReason = async function(callerId) {
+    const select = document.getElementById(`reject-reason-${callerId}`);
+    const reason = select.value;
+    
+    if (!reason) {
+        rejectCall(callerId); 
+        return;
+    }
+    
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: callerId, content: reason
+    }]);
+    
+    if (window.location.pathname.includes('messages.html') && currentChatUserId == callerId) {
+        loadChatMessages(callerId);
+    }
+};
+
+window.acceptCall = function(callerId, roomName) {
+    const popup = document.getElementById('incoming-call-popup');
+    if(popup) popup.remove();
+    
+    if (window.location.pathname.includes('messages.html')) {
+        supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
+            if (caller) {
+                let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
+                openChatWithUser(callerId, caller.username, avatar);
+                joinVideoRoomFromInvite(roomName);
+            }
+        });
+    } else {
+        window.location.href = `messages.html?joinCall=${roomName}&callerId=${callerId}`;
+    }
+};
