@@ -308,7 +308,6 @@ async function submitPostSkill() {
     loadSkills(); 
 }
 
-
 // ==========================================
 // 3. AUTHENTICATION LOGIC
 // ==========================================
@@ -456,7 +455,6 @@ async function handleLogout() {
     await supabaseClient.auth.signOut();
     window.location.href = "index.html"; 
 }
-
 
 // ==========================================
 // 5. MESSAGING SYSTEM LOGIC
@@ -789,7 +787,6 @@ async function updateMessagesBadge() {
         }
     }
 }
-
 
 // ==========================================
 // 6. CONNECTIONS & SEARCH SYSTEM
@@ -1133,7 +1130,6 @@ function setupRealtimeListeners() {
                 if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
             }
 
-            // MESSAGING REALTIME (Includes Call Triggers & Rejections)
             if (table === 'messages' && currentUserId) {
                 if (data && (data.sender_id == currentUserId || data.receiver_id == currentUserId)) {
                     if (data.receiver_id == currentUserId && payload.eventType === 'INSERT') {
@@ -1222,7 +1218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
-    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
         
@@ -1281,7 +1276,7 @@ function showToast(message) {
 
 
 // ==========================================
-// 13. AGORA VIDEO CALLING ENGINE (Safe String Math)
+// 13. AGORA VIDEO CALLING ENGINE (Layout Manager)
 // ==========================================
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
@@ -1317,10 +1312,8 @@ function playConnectSound() {
     }
 }
 
-// 1. Fetch Token from Backend
 async function fetchAgoraToken(channelName) {
     try {
-        // Appending timestamp prevents the browser from caching an old token
         const response = await fetch(`/rtcToken?channelName=${channelName}&t=${Date.now()}`);
         const data = await response.json();
         return data.token;
@@ -1330,14 +1323,126 @@ async function fetchAgoraToken(channelName) {
     }
 }
 
-// Helper to generate a safe room name regardless of ID type
 function generateSafeRoomName(id1, id2) {
     const sortedIds = [String(id1), String(id2)].sort();
     let safeName = `SkillSwap_${sortedIds[0]}_${sortedIds[1]}`.replace(/[^a-zA-Z0-9_]/g, '_');
-    return safeName.substring(0, 64); // Agora limit is 64 bytes
+    return safeName.substring(0, 64);
 }
 
-// 2. Trigger the Call (Caller Side)
+// Layout Engine: Dynamically updates the DOM based on active screens/cameras
+function updateVideoLayout() {
+    const localCam = document.getElementById('local-player');
+    const localScreen = document.getElementById('local-screen-preview');
+    const remotePlayers = Array.from(document.querySelectorAll('[id^="player-"]'));
+    
+    const allBoxes = [localCam, localScreen, ...remotePlayers].filter(el => el !== null);
+    
+    const heroZone = document.getElementById('hero-zone');
+    const sidebarZone = document.getElementById('sidebar-zone');
+    const defaultZone = document.getElementById('default-zone');
+    const remotePlayerList = document.getElementById('remote-playerlist');
+
+    // Condition for Presentation Mode: A local screen exists, OR there are 2+ remote feeds
+    const hasScreenShare = localScreen !== null || remotePlayers.length > 1;
+
+    if (hasScreenShare) {
+        heroZone.style.display = 'block';
+        sidebarZone.style.display = 'flex';
+        defaultZone.style.pointerEvents = 'none';
+        defaultZone.style.opacity = '0'; // Hide the default container visually
+
+        let currentHero = heroZone.children[0];
+        
+        // Auto-assign hero if empty
+        if (!currentHero) {
+            if (localScreen) {
+                currentHero = localScreen;
+            } else {
+                // Find the remote screen share (the one whose ID doesn't contain the active user ID)
+                const remoteScreen = remotePlayers.find(el => !el.id.includes(currentChatUserId));
+                currentHero = remoteScreen || remotePlayers[0] || localCam;
+            }
+        }
+
+        // Distribute boxes
+        allBoxes.forEach(box => {
+            box.style.cursor = 'pointer'; 
+            box.style.position = 'relative'; 
+            box.style.bottom = 'auto';
+            box.style.right = 'auto';
+            box.style.pointerEvents = 'auto';
+
+            if (box === currentHero) {
+                heroZone.appendChild(box);
+                box.style.width = '100%';
+                box.style.height = '100%';
+                box.style.border = 'none';
+            } else {
+                sidebarZone.appendChild(box);
+                box.style.width = '100%';
+                box.style.height = '160px'; 
+                box.style.flexShrink = '0';
+                box.style.border = '1px solid #5f6368';
+            }
+            
+            box.onclick = () => swapToHero(box);
+        });
+
+    } else {
+        // DEFAULT MODE
+        heroZone.style.display = 'none';
+        sidebarZone.style.display = 'none';
+        defaultZone.style.opacity = '1';
+        defaultZone.style.pointerEvents = 'none'; // container click-through
+
+        if (localCam) {
+            defaultZone.appendChild(localCam); 
+            localCam.style.position = 'absolute';
+            localCam.style.bottom = '14px';
+            localCam.style.right = '14px';
+            localCam.style.width = '240px';
+            localCam.style.height = '160px';
+            localCam.style.border = '1px solid #5f6368';
+            localCam.style.zIndex = '10';
+            localCam.style.cursor = 'default';
+            localCam.onclick = null; 
+        }
+
+        if (remotePlayers.length > 0) {
+            remotePlayerList.appendChild(remotePlayers[0]);
+            remotePlayers[0].style.width = '100%';
+            remotePlayers[0].style.height = '100%';
+            remotePlayers[0].style.position = 'relative';
+            remotePlayers[0].style.border = 'none';
+            remotePlayers[0].style.cursor = 'default';
+            remotePlayers[0].onclick = null;
+        }
+    }
+}
+
+// Click-to-swap logic for the Presentation Gallery
+function swapToHero(clickedBox) {
+    if (clickedBox.parentElement.id === 'sidebar-zone') {
+        const heroZone = document.getElementById('hero-zone');
+        const sidebarZone = document.getElementById('sidebar-zone');
+        const currentHero = heroZone.children[0];
+
+        if (currentHero) {
+            sidebarZone.insertBefore(currentHero, clickedBox); 
+            currentHero.style.width = '100%';
+            currentHero.style.height = '160px';
+            currentHero.style.flexShrink = '0';
+            currentHero.style.border = '1px solid #5f6368';
+        }
+
+        heroZone.appendChild(clickedBox);
+        clickedBox.style.width = '100%';
+        clickedBox.style.height = '100%';
+        clickedBox.style.border = 'none';
+    }
+}
+
+
 async function startVideoCall() {
     if (!currentChatUserId) return;
     
@@ -1381,7 +1486,6 @@ async function joinVideoRoomFromInvite(roomName) {
     await joinCall();
 }
 
-// 3. Connect to Agora
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
@@ -1400,17 +1504,12 @@ async function joinCall() {
             if (document.getElementById(`player-${user.uid}`) === null) {
                 const playerContainer = document.createElement("div");
                 playerContainer.id = `player-${user.uid}`;
-                playerContainer.style.flex = "1";
-                playerContainer.style.height = "100%";
-                playerContainer.style.minWidth = "0"; 
                 playerContainer.style.background = "#202124"; 
-                playerContainer.style.borderRadius = "8px";
-                playerContainer.style.overflow = "hidden";
-                playerContainer.style.position = "relative"; 
-                document.getElementById("remote-playerlist").append(playerContainer);
+                document.body.appendChild(playerContainer); // Temp append
             }
-            // FIT CONTAIN: Ensures video scales properly without cropping!
+            // FIT CONTAIN is crucial here so screens don't get chopped off
             user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
+            updateVideoLayout();
         }
         if (mediaType === "audio") {
             user.audioTrack.play();
@@ -1420,10 +1519,11 @@ async function joinCall() {
     rtc.client.on("user-unpublished", user => {
         const playerContainer = document.getElementById(`player-${user.uid}`);
         if (playerContainer) playerContainer.remove();
+        updateVideoLayout();
     });
 
     rtc.client.on("user-left", (user) => {
-        // ONLY kill the call if the main user disconnects (not the screen bot)
+        // ONLY drop the call if the actual person disconnects, not their screen share bot
         if (user.uid == currentChatUserId) {
             const chatName = document.getElementById('chat-header-name').innerText || "The other user";
             showToast(`${chatName} disconnected.`);
@@ -1438,9 +1538,10 @@ async function joinCall() {
     try {
         noCameraDetected = false; 
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-        document.getElementById("local-player").innerHTML = ""; // Wipe error states before playing
-        rtc.localVideoTrack.play("local-player", { fit: "cover" }); // Local pip looks best covered
+        document.getElementById("local-player").innerHTML = ""; // Wipe error states
+        rtc.localVideoTrack.play("local-player", { fit: "cover" }); // Local PiP looks better covered
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+        updateVideoLayout();
     } catch (error) {
         if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
             noCameraDetected = true;
@@ -1468,7 +1569,6 @@ async function joinCall() {
     }
 }
 
-// 4. End Call Logic
 async function endCallButtonAction() {
     if (isCallConnected && currentChatUserId) {
         const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
@@ -1506,6 +1606,12 @@ async function cleanupVideoEngine() {
     const remoteList = document.getElementById("remote-playerlist");
     if (remoteList) remoteList.innerHTML = ""; 
     
+    const heroZone = document.getElementById("hero-zone");
+    if (heroZone) heroZone.innerHTML = "";
+    
+    const sidebarZone = document.getElementById("sidebar-zone");
+    if (sidebarZone) sidebarZone.innerHTML = "";
+
     stopCallTimer();
 
     isAudioMuted = false;
@@ -1527,7 +1633,6 @@ async function cleanupVideoEngine() {
     lucide.createIcons();
 }
 
-// 5. Button Actions
 function toggleMic() {
     if(!rtc.localAudioTrack) return;
     isAudioMuted = !isAudioMuted;
@@ -1573,52 +1678,22 @@ async function toggleScreenShare() {
 
     if (!isScreenSharing) {
         try {
-            console.log("1. Requesting screen track from browser...");
             rtc.screenTrack = await AgoraRTC.createScreenVideoTrack();
-            
-            console.log("2. Creating Screen Bot client...");
             rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-            
-            console.log("3. Fetching fresh bot token...");
             const screenToken = await fetchAgoraToken(options.channel);
             
-            console.log("4. Screen Bot joining channel...");
-            const screenUid = await rtc.screenClient.join(options.appId, options.channel, screenToken, null);
-            
-            console.log(`5. Screen Bot joined with UID: ${screenUid}. Publishing...`);
+            await rtc.screenClient.join(options.appId, options.channel, screenToken, null);
             await rtc.screenClient.publish(rtc.screenTrack);
-            console.log("6. Screen successfully published to the room!");
 
             isScreenSharing = true;
             
             const previewContainer = document.createElement("div");
             previewContainer.id = `local-screen-preview`;
-            previewContainer.style.flex = "1";
-            previewContainer.style.height = "100%";
-            previewContainer.style.minWidth = "0"; 
             previewContainer.style.background = "#202124";
-            previewContainer.style.borderRadius = "8px";
-            previewContainer.style.overflow = "hidden";
-            previewContainer.style.border = "2px solid #8b5cf6";
-            previewContainer.style.position = "relative";
+            document.body.appendChild(previewContainer); // Temp append
             
-            const label = document.createElement("div");
-            label.innerText = "You are sharing your screen";
-            label.style.position = "absolute";
-            label.style.top = "10px";
-            label.style.left = "10px";
-            label.style.background = "rgba(0,0,0,0.6)";
-            label.style.color = "white";
-            label.style.padding = "4px 8px";
-            label.style.borderRadius = "4px";
-            label.style.fontSize = "0.75rem";
-            label.style.zIndex = "100";
-            
-            previewContainer.appendChild(label);
-            document.getElementById("remote-playerlist").append(previewContainer);
-            
-            // FIT CONTAIN: Letterboxes your local preview too
             rtc.screenTrack.play(previewContainer, { fit: "contain" });
+            updateVideoLayout(); // Trigger Layout Engine!
 
             const btn = document.getElementById('btn-screen');
             if(btn) {
@@ -1634,11 +1709,10 @@ async function toggleScreenShare() {
 
         } catch (error) {
             console.error("Screen sharing failed:", error);
-            
             if (error.name === "NotAllowedError" || error.message.includes("Permission denied")) {
                 showToast("Screen share cancelled. Make sure you click the picture of the screen before hitting Share!");
             } else {
-                showToast("Screen sharing failed to start. Check console for details.");
+                showToast("Screen sharing failed to start.");
             }
         }
     } else {
@@ -1649,7 +1723,6 @@ async function toggleScreenShare() {
 async function stopScreenShare() {
     if (!isScreenSharing) return;
     
-    console.log("Stopping screen share...");
     if (rtc.screenTrack) {
         rtc.screenTrack.close();
         rtc.screenTrack = null;
@@ -1662,16 +1735,15 @@ async function stopScreenShare() {
     
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
+    updateVideoLayout(); // Trigger Layout Engine!
     
     const btn = document.getElementById('btn-screen');
     if(btn) {
         btn.style.background = ""; 
         btn.style.color = "";
     }
-    console.log("Screen share fully stopped.");
 }
 
-// 6. Simple Timer Logic
 let callInterval;
 let callSeconds = 0;
 
@@ -1693,7 +1765,7 @@ function stopCallTimer() {
 }
 
 // ==========================================
-// 14. GLOBAL INCOMING CALL POPUP LOGIC 
+// 14. GLOBAL INCOMING CALL POPUP LOGIC
 // ==========================================
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
