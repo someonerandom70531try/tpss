@@ -456,6 +456,7 @@ async function handleLogout() {
     window.location.href = "index.html"; 
 }
 
+
 // ==========================================
 // 5. MESSAGING SYSTEM LOGIC
 // ==========================================
@@ -1348,8 +1349,7 @@ function updateVideoLayout() {
     if (hasScreenShare) {
         heroZone.style.display = 'block';
         sidebarZone.style.display = 'flex';
-        defaultZone.style.pointerEvents = 'none';
-        defaultZone.style.opacity = '0'; // Hide the default container visually
+        defaultZone.style.display = 'none';
 
         let currentHero = heroZone.children[0];
         
@@ -1371,18 +1371,21 @@ function updateVideoLayout() {
             box.style.bottom = 'auto';
             box.style.right = 'auto';
             box.style.pointerEvents = 'auto';
+            box.style.boxShadow = 'none'; 
 
             if (box === currentHero) {
                 heroZone.appendChild(box);
                 box.style.width = '100%';
                 box.style.height = '100%';
                 box.style.border = 'none';
+                box.style.borderRadius = '8px';
             } else {
                 sidebarZone.appendChild(box);
                 box.style.width = '100%';
                 box.style.height = '160px'; 
                 box.style.flexShrink = '0';
                 box.style.border = '1px solid #5f6368';
+                box.style.borderRadius = '8px';
             }
             
             box.onclick = () => swapToHero(box);
@@ -1392,17 +1395,18 @@ function updateVideoLayout() {
         // DEFAULT MODE
         heroZone.style.display = 'none';
         sidebarZone.style.display = 'none';
-        defaultZone.style.opacity = '1';
-        defaultZone.style.pointerEvents = 'none'; // container click-through
+        defaultZone.style.display = 'flex';
 
         if (localCam) {
             defaultZone.appendChild(localCam); 
             localCam.style.position = 'absolute';
-            localCam.style.bottom = '14px';
-            localCam.style.right = '14px';
+            localCam.style.bottom = '20px';
+            localCam.style.right = '20px';
             localCam.style.width = '240px';
             localCam.style.height = '160px';
             localCam.style.border = '1px solid #5f6368';
+            localCam.style.borderRadius = '8px';
+            localCam.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
             localCam.style.zIndex = '10';
             localCam.style.cursor = 'default';
             localCam.onclick = null; 
@@ -1414,6 +1418,7 @@ function updateVideoLayout() {
             remotePlayers[0].style.height = '100%';
             remotePlayers[0].style.position = 'relative';
             remotePlayers[0].style.border = 'none';
+            remotePlayers[0].style.borderRadius = '8px';
             remotePlayers[0].style.cursor = 'default';
             remotePlayers[0].onclick = null;
         }
@@ -1441,7 +1446,6 @@ function swapToHero(clickedBox) {
         clickedBox.style.border = 'none';
     }
 }
-
 
 async function startVideoCall() {
     if (!currentChatUserId) return;
@@ -1507,7 +1511,7 @@ async function joinCall() {
                 playerContainer.style.background = "#202124"; 
                 document.body.appendChild(playerContainer); // Temp append
             }
-            // FIT CONTAIN is crucial here so screens don't get chopped off
+            // FIT CONTAIN ensures video scales without cropping
             user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
             updateVideoLayout();
         }
@@ -1523,7 +1527,7 @@ async function joinCall() {
     });
 
     rtc.client.on("user-left", (user) => {
-        // ONLY drop the call if the actual person disconnects, not their screen share bot
+        // ONLY drop the call if the actual person disconnects
         if (user.uid == currentChatUserId) {
             const chatName = document.getElementById('chat-header-name').innerText || "The other user";
             showToast(`${chatName} disconnected.`);
@@ -1538,8 +1542,16 @@ async function joinCall() {
     try {
         noCameraDetected = false; 
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-        document.getElementById("local-player").innerHTML = ""; // Wipe error states
-        rtc.localVideoTrack.play("local-player", { fit: "cover" }); // Local PiP looks better covered
+        
+        const localPlayer = document.getElementById("local-player");
+        localPlayer.innerHTML = ""; 
+        
+        // Remove "No Camera" text if it was there
+        if (localPlayer.querySelector('i[data-lucide="video-off"]')) {
+            localPlayer.innerHTML = ""; 
+        }
+        
+        rtc.localVideoTrack.play("local-player", { fit: "cover" }); 
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
         updateVideoLayout();
     } catch (error) {
@@ -1690,8 +1702,9 @@ async function toggleScreenShare() {
             const previewContainer = document.createElement("div");
             previewContainer.id = `local-screen-preview`;
             previewContainer.style.background = "#202124";
-            document.body.appendChild(previewContainer); // Temp append
+            document.body.appendChild(previewContainer); 
             
+            // FIT CONTAIN: Ensures local preview isn't cropped
             rtc.screenTrack.play(previewContainer, { fit: "contain" });
             updateVideoLayout(); // Trigger Layout Engine!
 
@@ -1735,7 +1748,7 @@ async function stopScreenShare() {
     
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
-    updateVideoLayout(); // Trigger Layout Engine!
+    updateVideoLayout(); // Trigger Layout Engine to collapse back to default view
     
     const btn = document.getElementById('btn-screen');
     if(btn) {
@@ -1765,7 +1778,7 @@ function stopCallTimer() {
 }
 
 // ==========================================
-// 14. GLOBAL INCOMING CALL POPUP LOGIC
+// 14. GLOBAL INCOMING CALL POPUP LOGIC 
 // ==========================================
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
