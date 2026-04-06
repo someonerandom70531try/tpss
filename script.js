@@ -154,7 +154,6 @@ window.deletePost = async function(event, postId) {
 }
 window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
-
 // --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
     if(userA == userB) return 'self';
@@ -1227,6 +1226,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
+    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
         
@@ -1577,27 +1577,58 @@ async function toggleScreenShare() {
 
     if (!isScreenSharing) {
         try {
-            // Stripped down to the absolute basics to prevent resolution rejection
+            console.log("1. Requesting screen track from browser...");
             rtc.screenTrack = await AgoraRTC.createScreenVideoTrack();
             
-            // Create the secondary "Screen Bot" client
+            console.log("2. Creating Screen Bot client...");
             rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             
-            // Join the same channel with the same token
-            await rtc.screenClient.join(options.appId, options.channel, options.token, null);
+            console.log("3. Screen Bot joining channel...");
+            const screenUid = await rtc.screenClient.join(options.appId, options.channel, options.token, null);
+            
+            console.log(`4. Screen Bot joined with UID: ${screenUid}. Publishing...`);
             await rtc.screenClient.publish(rtc.screenTrack);
+            console.log("5. Screen successfully published to the room!");
 
             isScreenSharing = true;
             
+            // Add a local preview window so the sharer knows it's working
+            const previewContainer = document.createElement("div");
+            previewContainer.id = `local-screen-preview`;
+            previewContainer.style.flex = "1";
+            previewContainer.style.height = "100%";
+            previewContainer.style.minWidth = "0"; 
+            previewContainer.style.background = "#3c4043";
+            previewContainer.style.borderRadius = "8px";
+            previewContainer.style.overflow = "hidden";
+            previewContainer.style.border = "2px solid #8b5cf6";
+            
+            const label = document.createElement("div");
+            label.innerText = "You are sharing your screen";
+            label.style.position = "absolute";
+            label.style.top = "10px";
+            label.style.left = "10px";
+            label.style.background = "rgba(0,0,0,0.6)";
+            label.style.color = "white";
+            label.style.padding = "4px 8px";
+            label.style.borderRadius = "4px";
+            label.style.fontSize = "0.75rem";
+            label.style.zIndex = "100";
+            
+            previewContainer.appendChild(label);
+            document.getElementById("remote-playerlist").append(previewContainer);
+            
+            rtc.screenTrack.play(previewContainer);
+
             const btn = document.getElementById('btn-screen');
             if(btn) {
-                btn.style.background = "#8b5cf6"; // Highlight purple
+                btn.style.background = "#8b5cf6"; 
                 btn.style.color = "white";
             }
 
             showToast("Screen sharing started.");
 
-            // Native browser "Stop Sharing" button listener (the black bar at the bottom)
+            // Native browser "Stop Sharing" button listener
             rtc.screenTrack.on("track-ended", () => {
                 stopScreenShare();
             });
@@ -1608,7 +1639,7 @@ async function toggleScreenShare() {
             if (error.name === "NotAllowedError" || error.message.includes("Permission denied")) {
                 showToast("Screen share cancelled. Make sure you click the picture of the screen before hitting Share!");
             } else {
-                showToast("Screen sharing failed to start.");
+                showToast("Screen sharing failed to start. Check console for details.");
             }
         }
     } else {
@@ -1617,6 +1648,9 @@ async function toggleScreenShare() {
 }
 
 async function stopScreenShare() {
+    if (!isScreenSharing) return;
+    
+    console.log("Stopping screen share...");
     if (rtc.screenTrack) {
         rtc.screenTrack.close();
         rtc.screenTrack = null;
@@ -1627,11 +1661,16 @@ async function stopScreenShare() {
     }
     isScreenSharing = false;
     
+    // Remove the local preview window
+    const preview = document.getElementById('local-screen-preview');
+    if (preview) preview.remove();
+    
     const btn = document.getElementById('btn-screen');
     if(btn) {
-        btn.style.background = "#3c4043";
-        btn.style.color = "white";
+        btn.style.background = ""; 
+        btn.style.color = "";
     }
+    console.log("Screen share fully stopped.");
 }
 
 
@@ -1657,7 +1696,7 @@ function stopCallTimer() {
 }
 
 // ==========================================
-// 14. GLOBAL INCOMING CALL POPUP LOGIC (LIGHT THEME)
+// 14. GLOBAL INCOMING CALL POPUP LOGIC 
 // ==========================================
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
