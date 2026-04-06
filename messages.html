@@ -174,10 +174,18 @@
 
     <div id="video-call-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #202124; z-index: 10000; flex-direction: column;">
         
-        <div style="flex: 1; padding: 16px; display: flex; justify-content: center; align-items: center; position: relative;">
-            <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; gap: 16px; justify-content: center; align-items: center;"></div>
+        <div id="video-layout-container" style="flex: 1; padding: 16px; display: flex; position: relative; gap: 16px; min-height: 0;">
             
-            <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 30px; right: 30px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #5f6368; z-index: 10;"></div>
+            <div id="hero-zone" style="flex: 1; height: 100%; border-radius: 8px; overflow: hidden; background: #000; display: none; position: relative;"></div>
+            
+            <div id="sidebar-zone" style="width: 240px; height: 100%; display: none; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 4px;"></div>
+
+            <div id="default-zone" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: absolute; top: 16px; left: 16px; right: 16px; bottom: 16px; pointer-events: none;">
+                
+                <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; pointer-events: auto;"></div>
+                
+                <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 14px; right: 14px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #5f6368; z-index: 10; pointer-events: auto; transition: all 0.3s;"></div>
+            </div>
         </div>
 
         <div style="height: 80px; background: #202124; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-top: 1px solid #3c4043;">
@@ -195,7 +203,6 @@
                 <button id="btn-cam" class="meet-btn" onclick="toggleCam()">
                     <i data-lucide="video" style="width: 20px; height: 20px;"></i>
                 </button>
-
                 <button id="btn-screen" class="meet-btn" onclick="toggleScreenShare()">
                     <i data-lucide="monitor-up" style="width: 20px; height: 20px;"></i>
                 </button>
@@ -203,11 +210,9 @@
                 <button class="meet-btn" onclick="showToast('Reactions coming soon!')">
                     <i data-lucide="smile" style="width: 20px; height: 20px;"></i>
                 </button>
-                
                 <button class="meet-btn" onclick="showToast('Whiteboard coming soon! (Path A Active)')">
                     <i data-lucide="presentation" style="width: 20px; height: 20px;"></i>
                 </button>
-
                 <button class="meet-btn" onclick="showToast('Raise Hand coming soon!')">
                     <i data-lucide="hand" style="width: 20px; height: 20px;"></i>
                 </button>
