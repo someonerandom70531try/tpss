@@ -310,7 +310,7 @@ async function submitPostSkill() {
 
 
 // ==========================================
-// 3. AUTHENTICATION LOGIC (WITH GOOGLE BRIDGE)
+// 3. AUTHENTICATION LOGIC
 // ==========================================
 let isLoginMode = true;
 
@@ -450,7 +450,6 @@ window.onclick = function(event) {
     document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
 }
 
-// Clears the standard login AND the Supabase Google session
 async function handleLogout() { 
     localStorage.removeItem('currentUserId'); 
     localStorage.removeItem('currentUser'); 
@@ -460,7 +459,7 @@ async function handleLogout() {
 
 
 // ==========================================
-// 5. MESSAGING SYSTEM LOGIC (Standalone Page)
+// 5. MESSAGING SYSTEM LOGIC
 // ==========================================
 let currentChatUserId = null;
 let activeContextMenuMsgId = null;
@@ -623,7 +622,6 @@ function createMessageHtml(msg, isSender) {
     let rightClickEvent = '';
     let maxW = '70%';
 
-    // Handle Soft Deleted Messages
     if (msg.is_deleted) {
         contentHtml = `<div style="display: flex; align-items: center; gap: 6px; color: #6b7280; font-style: italic;">
                         <i data-lucide="ban" style="width: 14px; height: 14px;"></i> This message was deleted
@@ -631,7 +629,6 @@ function createMessageHtml(msg, isSender) {
         metaHtml = `<span style="font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: block; text-align: right;">${timeString}</span>`;
         bg = isSender ? 'background: #f3f4f6; border: 1px solid #e5e7eb;' : 'background: #f9fafb; border: 1px solid #e5e7eb;';
     } 
-    // Handle System Tags
     else if (msg.content.startsWith('[CALL_INVITE]:')) {
         contentHtml = `<div style="display:flex; align-items:center; gap:8px; font-weight: 500; color: #4f46e5;">
                         <i data-lucide="video" style="width:18px; height:18px;"></i> Video Call Started
@@ -662,7 +659,6 @@ function createMessageHtml(msg, isSender) {
         maxW = '85%';
         rightClickEvent = ''; 
     }
-    // Normal Message
     else {
         contentHtml = msg.content;
         const editedMark = msg.is_edited ? 'Edited ' : '';
@@ -1226,7 +1222,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
-    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
         
@@ -1285,7 +1280,7 @@ function showToast(message) {
 
 
 // ==========================================
-// 13. AGORA VIDEO CALLING ENGINE (Dual Client Screen Share)
+// 13. AGORA VIDEO CALLING ENGINE (Safe String Math)
 // ==========================================
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
@@ -1311,7 +1306,6 @@ let isCallConnected = false;
 let isWaitingForPickup = false;
 let isScreenSharing = false;
 
-// Satisfying Discord-style "Bloop" for when the connection goes live
 const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
 
 function playConnectSound() {
@@ -1322,17 +1316,24 @@ function playConnectSound() {
     }
 }
 
-
 // 1. Fetch Token from Backend
 async function fetchAgoraToken(channelName) {
     try {
-        const response = await fetch(`/rtcToken?channelName=${channelName}`);
+        // Appending timestamp prevents the browser from caching an old token
+        const response = await fetch(`/rtcToken?channelName=${channelName}&t=${Date.now()}`);
         const data = await response.json();
         return data.token;
     } catch (error) {
         console.error("Error fetching token:", error);
         return null;
     }
+}
+
+// Helper to generate a safe room name regardless of ID type
+function generateSafeRoomName(id1, id2) {
+    const sortedIds = [String(id1), String(id2)].sort();
+    let safeName = `SkillSwap_${sortedIds[0]}_${sortedIds[1]}`.replace(/[^a-zA-Z0-9_]/g, '_');
+    return safeName.substring(0, 64); // Agora limit is 64 bytes
 }
 
 // 2. Trigger the Call (Caller Side)
@@ -1342,7 +1343,7 @@ async function startVideoCall() {
     isWaitingForPickup = true;
     const currentUserId = localStorage.getItem('currentUserId');
 
-    const roomName = `SkillSwap_${Math.min(currentUserId, currentChatUserId)}_${Math.max(currentUserId, currentChatUserId)}`;
+    const roomName = generateSafeRoomName(currentUserId, currentChatUserId);
     options.channel = roomName;
 
     const token = await fetchAgoraToken(roomName);
@@ -1352,13 +1353,11 @@ async function startVideoCall() {
     }
     
     options.token = token;
-    options.uid = currentUserId; 
 
     document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
     document.getElementById('call-time').innerText = "Calling...";
     document.getElementById('video-call-overlay').style.display = 'flex';
 
-    // Send invite
     const messageContent = `[CALL_INVITE]:${roomName}`;
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: currentChatUserId, content: messageContent
@@ -1368,14 +1367,11 @@ async function startVideoCall() {
     await joinCall();
 }
 
-// Automatically called when a user Accepts the call from the popup
 async function joinVideoRoomFromInvite(roomName) {
-    const currentUserId = localStorage.getItem('currentUserId');
     options.channel = roomName;
     const token = await fetchAgoraToken(roomName);
     if (!token) return;
     options.token = token;
-    options.uid = currentUserId;
 
     document.getElementById('call-room-name').innerText = `Room: ${roomName}`;
     document.getElementById('call-time').innerText = "Connecting...";
@@ -1388,11 +1384,10 @@ async function joinVideoRoomFromInvite(roomName) {
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
-    // Listen for when the OTHER user joins and turns on their camera OR screen share
     rtc.client.on("user-published", async (user, mediaType) => {
         await rtc.client.subscribe(user, mediaType);
         
-        isWaitingForPickup = false; // They answered!
+        isWaitingForPickup = false; 
 
         if (!isCallConnected) {
             startCallTimer();
@@ -1401,13 +1396,12 @@ async function joinCall() {
         }
 
         if (mediaType === "video") {
-            // Because flex is active, adding a second video (like a screen share) will smoothly place them side-by-side!
             if (document.getElementById(`player-${user.uid}`) === null) {
                 const playerContainer = document.createElement("div");
                 playerContainer.id = `player-${user.uid}`;
                 playerContainer.style.flex = "1";
                 playerContainer.style.height = "100%";
-                playerContainer.style.minWidth = "0"; // prevents flexbox blowout
+                playerContainer.style.minWidth = "0"; 
                 playerContainer.style.background = "#3c4043";
                 playerContainer.style.borderRadius = "8px";
                 playerContainer.style.overflow = "hidden";
@@ -1420,25 +1414,21 @@ async function joinCall() {
         }
     });
 
-    // Listen for when the OTHER user stops their video (or screen share)
     rtc.client.on("user-unpublished", user => {
         const playerContainer = document.getElementById(`player-${user.uid}`);
         if (playerContainer) playerContainer.remove();
     });
 
     rtc.client.on("user-left", (user) => {
-        // If the screen share bot disconnects, don't show the toast. 
-        // We only care if the actual user disconnects (their ID matches the active chat).
-        if (user.uid == currentChatUserId) {
-            const chatName = document.getElementById('chat-header-name').innerText || "The other user";
-            showToast(`${chatName} disconnected.`);
-            setTimeout(() => {
-                endCallButtonAction(); 
-            }, 1500);
-        }
+        const chatName = document.getElementById('chat-header-name').innerText || "The other user";
+        showToast(`${chatName} disconnected.`);
+        setTimeout(() => {
+            endCallButtonAction(); 
+        }, 1500);
     });
 
-    await rtc.client.join(options.appId, options.channel, options.token, options.uid);
+    // PASSING NULL forces Agora to generate a safe Integer UID for us!
+    options.uid = await rtc.client.join(options.appId, options.channel, options.token, null);
 
     try {
         noCameraDetected = false; 
@@ -1472,7 +1462,7 @@ async function joinCall() {
     }
 }
 
-// 4. End Call Logic & Clean Up
+// 4. End Call Logic
 async function endCallButtonAction() {
     if (isCallConnected && currentChatUserId) {
         const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
@@ -1498,7 +1488,7 @@ async function endCallButtonAction() {
 }
 
 async function cleanupVideoEngine() {
-    await stopScreenShare(); // Ensure screen share drops if active
+    await stopScreenShare(); 
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
@@ -1531,7 +1521,7 @@ async function cleanupVideoEngine() {
     lucide.createIcons();
 }
 
-// 5. Button Actions (Mic, Camera, & Screen Share)
+// 5. Button Actions
 function toggleMic() {
     if(!rtc.localAudioTrack) return;
     isAudioMuted = !isAudioMuted;
@@ -1583,16 +1573,18 @@ async function toggleScreenShare() {
             console.log("2. Creating Screen Bot client...");
             rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             
-            console.log("3. Screen Bot joining channel...");
-            const screenUid = await rtc.screenClient.join(options.appId, options.channel, options.token, null);
+            console.log("3. Fetching fresh bot token...");
+            const screenToken = await fetchAgoraToken(options.channel);
             
-            console.log(`4. Screen Bot joined with UID: ${screenUid}. Publishing...`);
+            console.log("4. Screen Bot joining channel...");
+            const screenUid = await rtc.screenClient.join(options.appId, options.channel, screenToken, null);
+            
+            console.log(`5. Screen Bot joined with UID: ${screenUid}. Publishing...`);
             await rtc.screenClient.publish(rtc.screenTrack);
-            console.log("5. Screen successfully published to the room!");
+            console.log("6. Screen successfully published to the room!");
 
             isScreenSharing = true;
             
-            // Add a local preview window so the sharer knows it's working
             const previewContainer = document.createElement("div");
             previewContainer.id = `local-screen-preview`;
             previewContainer.style.flex = "1";
@@ -1628,7 +1620,6 @@ async function toggleScreenShare() {
 
             showToast("Screen sharing started.");
 
-            // Native browser "Stop Sharing" button listener
             rtc.screenTrack.on("track-ended", () => {
                 stopScreenShare();
             });
@@ -1661,7 +1652,6 @@ async function stopScreenShare() {
     }
     isScreenSharing = false;
     
-    // Remove the local preview window
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
     
@@ -1672,7 +1662,6 @@ async function stopScreenShare() {
     }
     console.log("Screen share fully stopped.");
 }
-
 
 // 6. Simple Timer Logic
 let callInterval;
