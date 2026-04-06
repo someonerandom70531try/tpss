@@ -1222,6 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { passive: false });
     }
     
+    // Check if we need to auto-join a call (from accepting the popup on another page)
     if (window.location.pathname.includes('messages.html')) {
         initMessagesPage();
         
@@ -1402,12 +1403,14 @@ async function joinCall() {
                 playerContainer.style.flex = "1";
                 playerContainer.style.height = "100%";
                 playerContainer.style.minWidth = "0"; 
-                playerContainer.style.background = "#3c4043";
+                playerContainer.style.background = "#202124"; 
                 playerContainer.style.borderRadius = "8px";
                 playerContainer.style.overflow = "hidden";
+                playerContainer.style.position = "relative"; 
                 document.getElementById("remote-playerlist").append(playerContainer);
             }
-            user.videoTrack.play(`player-${user.uid}`);
+            // FIT CONTAIN: Ensures video scales properly without cropping!
+            user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
         }
         if (mediaType === "audio") {
             user.audioTrack.play();
@@ -1420,20 +1423,23 @@ async function joinCall() {
     });
 
     rtc.client.on("user-left", (user) => {
-        const chatName = document.getElementById('chat-header-name').innerText || "The other user";
-        showToast(`${chatName} disconnected.`);
-        setTimeout(() => {
-            endCallButtonAction(); 
-        }, 1500);
+        // ONLY kill the call if the main user disconnects (not the screen bot)
+        if (user.uid == currentChatUserId) {
+            const chatName = document.getElementById('chat-header-name').innerText || "The other user";
+            showToast(`${chatName} disconnected.`);
+            setTimeout(() => {
+                endCallButtonAction(); 
+            }, 1500);
+        }
     });
 
-    // PASSING NULL forces Agora to generate a safe Integer UID for us!
     options.uid = await rtc.client.join(options.appId, options.channel, options.token, null);
 
     try {
         noCameraDetected = false; 
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-        rtc.localVideoTrack.play("local-player");
+        document.getElementById("local-player").innerHTML = ""; // Wipe error states before playing
+        rtc.localVideoTrack.play("local-player", { fit: "cover" }); // Local pip looks best covered
         await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
     } catch (error) {
         if (error.message.includes("DEVICE_NOT_FOUND") || error.name === "NotFoundError") {
@@ -1590,10 +1596,11 @@ async function toggleScreenShare() {
             previewContainer.style.flex = "1";
             previewContainer.style.height = "100%";
             previewContainer.style.minWidth = "0"; 
-            previewContainer.style.background = "#3c4043";
+            previewContainer.style.background = "#202124";
             previewContainer.style.borderRadius = "8px";
             previewContainer.style.overflow = "hidden";
             previewContainer.style.border = "2px solid #8b5cf6";
+            previewContainer.style.position = "relative";
             
             const label = document.createElement("div");
             label.innerText = "You are sharing your screen";
@@ -1610,7 +1617,8 @@ async function toggleScreenShare() {
             previewContainer.appendChild(label);
             document.getElementById("remote-playerlist").append(previewContainer);
             
-            rtc.screenTrack.play(previewContainer);
+            // FIT CONTAIN: Letterboxes your local preview too
+            rtc.screenTrack.play(previewContainer, { fit: "contain" });
 
             const btn = document.getElementById('btn-screen');
             if(btn) {
