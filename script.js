@@ -1577,16 +1577,13 @@ async function toggleScreenShare() {
 
     if (!isScreenSharing) {
         try {
-            // Create a screen track prioritizing text clarity
-            rtc.screenTrack = await AgoraRTC.createScreenVideoTrack({
-                encoderConfig: "1080p_1",
-                optimizationMode: "detail" 
-            });
+            // Stripped down to the absolute basics to prevent resolution rejection
+            rtc.screenTrack = await AgoraRTC.createScreenVideoTrack();
             
             // Create the secondary "Screen Bot" client
             rtc.screenClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             
-            // Join the same channel. We pass `null` for UID so Agora assigns it a random ID
+            // Join the same channel with the same token
             await rtc.screenClient.join(options.appId, options.channel, options.token, null);
             await rtc.screenClient.publish(rtc.screenTrack);
 
@@ -1600,14 +1597,19 @@ async function toggleScreenShare() {
 
             showToast("Screen sharing started.");
 
-            // Native browser "Stop Sharing" button listener
+            // Native browser "Stop Sharing" button listener (the black bar at the bottom)
             rtc.screenTrack.on("track-ended", () => {
                 stopScreenShare();
             });
 
         } catch (error) {
             console.error("Screen sharing failed:", error);
-            showToast("Screen sharing was cancelled.");
+            
+            if (error.name === "NotAllowedError" || error.message.includes("Permission denied")) {
+                showToast("Screen share cancelled. Make sure you click the picture of the screen before hitting Share!");
+            } else {
+                showToast("Screen sharing failed to start.");
+            }
         }
     } else {
         stopScreenShare();
