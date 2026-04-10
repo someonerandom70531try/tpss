@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+    <script src="https://unpkg.com/@netless/fastboard@latest/dist/fastboard.global.js"></script>
 </head>
 <body style="background-color: #f3f2ef; display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden;"> 
     
@@ -172,23 +173,36 @@
         </button>
     </div>
 
-    <div id="video-call-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #202124; z-index: 10000; flex-direction: column; box-sizing: border-box;">
+    <div id="video-call-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #202124; z-index: 10000; flex-direction: column; box-sizing: border-box;">
         
-        <div id="video-layout-container" style="flex: 1; padding: 16px; display: flex; position: relative; gap: 16px; min-height: 0; box-sizing: border-box; overflow: hidden;">
+        <div id="video-layout-container" style="flex: 1; padding: 16px; display: flex; position: relative; gap: 16px; min-height: 0; box-sizing: border-box; overflow: hidden; width: 100%;">
             
-            <div id="hero-zone" style="flex: 1; height: 100%; border-radius: 8px; overflow: hidden; background: #000; display: none; position: relative;"></div>
+            <div id="center-stage" style="flex: 1; display: none; gap: 16px; min-width: 0;">
+                <div id="hero-zone" style="flex: 1; border-radius: 8px; overflow: hidden; background: #000; position: relative; display: none;"></div>
+                
+                <div id="whiteboard-container" style="display: none; flex-direction: column; background: #f3f4f6; border-radius: 8px; overflow: hidden; border: 1px solid #5f6368;">
+                    <div style="padding: 10px 15px; color: #e8eaed; font-family: sans-serif; font-size: 0.9rem; font-weight: 600; border-bottom: 1px solid #5f6368; display: flex; justify-content: space-between; align-items: center; background: #3c4043;">
+                        <span style="display: flex; align-items: center; gap: 8px;"><i data-lucide="presentation" style="width: 16px; height: 16px; color: #a8c7fa;"></i> Interactive Whiteboard</span>
+                    </div>
+                    <div id="fastboard-mount" style="flex: 1; width: 100%; height: 100%; background: #ffffff; position: relative;"></div>
+                </div>
+
+            </div>
             
             <div id="sidebar-zone" style="width: 240px; height: 100%; display: none; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 4px;"></div>
 
             <div id="default-zone" style="flex: 1; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; pointer-events: none;">
+                <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; pointer-events: auto; border-radius: 8px; overflow: hidden; background: #202124; position: relative;"></div>
                 
-                <div id="remote-playerlist" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; pointer-events: auto; border-radius: 8px; overflow: hidden; background: #202124;"></div>
-                
-                <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 20px; right: 20px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #5f6368; z-index: 10; pointer-events: auto; transition: all 0.3s;"></div>
+                <div id="local-player" style="width: 240px; height: 160px; position: absolute; bottom: 20px; right: 20px; border-radius: 8px; overflow: hidden; background: #3c4043; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #5f6368; z-index: 10; pointer-events: auto; transition: all 0.3s;">
+                    <div id="local-avatar-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #3c4043; align-items: center; justify-content: center; z-index: 5;">
+                        <div id="local-avatar-circle" style="width: 60px; height: 60px; border-radius: 50%; background: #8b5cf6; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 600;"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div style="height: 80px; background: #202124; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-top: 1px solid #3c4043; box-sizing: border-box;">
+        <div style="height: 80px; background: #202124; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-top: 1px solid #3c4043; box-sizing: border-box; flex-shrink: 0;">
             
             <div style="color: white; font-size: 1rem; font-weight: 500; display: flex; align-items: center; gap: 15px; width: 250px;">
                 <span id="call-time">00:00</span>
@@ -211,7 +225,7 @@
                     <i data-lucide="smile" style="width: 20px; height: 20px;"></i>
                 </button>
                 
-                <button class="meet-btn" onclick="showToast('Whiteboard coming soon! (Path A Active)')">
+                <button id="btn-whiteboard" class="meet-btn" onclick="toggleWhiteboard()">
                     <i data-lucide="presentation" style="width: 20px; height: 20px;"></i>
                 </button>
 
@@ -230,8 +244,11 @@
             <div style="display: flex; gap: 15px; width: 250px; justify-content: flex-end; color: white;">
                 <button class="meet-icon-btn"><i data-lucide="info" style="width: 20px; height: 20px;"></i></button>
                 <button class="meet-icon-btn"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></button>
-                <button class="meet-icon-btn"><i data-lucide="layout-grid" style="width: 20px; height: 20px;"></i></button>
-                <button class="meet-icon-btn"><i data-lucide="shield" style="width: 20px; height: 20px;"></i></button>
+                
+                <button id="btn-layout" class="meet-icon-btn" onclick="toggleSplitScreen()" title="Toggle Split Layout">
+                    <i data-lucide="layout-template" style="width: 20px; height: 20px;"></i>
+                </button>
+
             </div>
         </div>
     </div>
