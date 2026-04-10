@@ -2080,3 +2080,15 @@ window.acceptCall = function(callerId, roomName) {
         window.location.href = `messages.html?joinCall=${roomName}&callerId=${callerId}`;
     }
 };
+
+// ==========================================
+// 15. PREVENT ACCIDENTAL DISCONNECTS
+// ==========================================
+// This fires if the user clicks Refresh, Back, or tries to close the tab
+window.addEventListener('beforeunload', function (e) {
+    if (isCallConnected || isWaitingForPickup) {
+        // This triggers the native browser "Leave Site? Changes you made may not be saved" popup
+        e.preventDefault();
+        e.returnValue = ''; 
+    }
+});
