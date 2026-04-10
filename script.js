@@ -456,7 +456,6 @@ async function handleLogout() {
     window.location.href = "index.html"; 
 }
 
-
 // ==========================================
 // 5. MESSAGING SYSTEM LOGIC
 // ==========================================
@@ -533,6 +532,8 @@ async function loadChatConnections() {
                     lastMsgText = prefix + "📞 Call ended";
                 } else if (lastMsg.content === '[CALL_MISSED]') {
                     lastMsgText = prefix + "📞 Missed Call";
+                } else if (lastMsg.content.startsWith('[WB_STATE]:')) {
+                    lastMsgText = prefix + "Started a Whiteboard";
                 } else {
                     lastMsgText = prefix + lastMsg.content;
                 }
@@ -601,7 +602,10 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
+        // Skip rendering silent system pings for whiteboard state
+        if (!msg.content.startsWith('[WB_STATE]:')) {
+            chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
+        }
     });
     
     chatArea.scrollTop = chatArea.scrollHeight;
@@ -700,9 +704,6 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
-// ==========================================
-// Right-Click Context Menu Actions
-// ==========================================
 window.showContextMenu = function(e, msgId, content) {
     e.preventDefault(); 
     activeContextMenuMsgId = msgId;
@@ -1160,13 +1161,27 @@ function setupRealtimeListeners() {
                                 cleanupVideoEngine();
                             }
                         }
+                        else if (data.content.startsWith('[WB_STATE]:')) {
+                            const parts = data.content.split(':');
+                            const state = parts[1] === 'true';
+                            
+                            if (state) {
+                                const uuid = parts[2];
+                                joinWhiteboardRoom(uuid);
+                            } else {
+                                closeWhiteboardRoom();
+                            }
+                        }
 
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
                             supabaseClient.from('messages').update({ is_read: true }).eq('id', data.id).then();
                             const chatArea = document.getElementById('chat-messages-area');
                             if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
                             if (chatArea) {
-                                chatArea.innerHTML += createMessageHtml(data, false);
+                                // Hide secret system pings from chat
+                                if (!data.content.startsWith('[WB_STATE]:')) {
+                                    chatArea.innerHTML += createMessageHtml(data, false);
+                                }
                                 chatArea.scrollTop = chatArea.scrollHeight;
                                 lucide.createIcons();
                             }
@@ -1277,7 +1292,7 @@ function showToast(message) {
 
 
 // ==========================================
-// 13. AGORA VIDEO CALLING ENGINE (Layout Manager)
+// 13. AGORA VIDEO ENGINE & LAYOUT MANAGER
 // ==========================================
 const AGORA_APP_ID = "8adb28c71a9e40f8905245db411405ff"; 
 
@@ -1289,12 +1304,7 @@ let rtc = {
     screenTrack: null
 };
 
-let options = {
-    appId: AGORA_APP_ID,
-    channel: null,
-    token: null,
-    uid: null
-};
+let options = { appId: AGORA_APP_ID, channel: null, token: null, uid: null };
 
 let isAudioMuted = false;
 let isVideoMuted = false;
@@ -1302,6 +1312,9 @@ let noCameraDetected = false;
 let isCallConnected = false;
 let isWaitingForPickup = false;
 let isScreenSharing = false;
+let isWhiteboardActive = false;
+let isSplitScreen = false;
+let fastboardApp = null; // Holds the Path A Whiteboard instance
 
 const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
 
@@ -1330,123 +1343,180 @@ function generateSafeRoomName(id1, id2) {
     return safeName.substring(0, 64);
 }
 
-// Layout Engine: Dynamically updates the DOM based on active screens/cameras
+// Helper to handle avatar overlays for muted cameras
+function updateAvatarOverlay(uid, isMuted, usernameStr) {
+    let overlayId = uid === "local" ? "local-avatar-overlay" : `avatar-overlay-${uid}`;
+    let overlay = document.getElementById(overlayId);
+    
+    // Local player has the overlay hardcoded in HTML. Remote players need it injected dynamically.
+    if (!overlay && uid !== "local") {
+        const playerContainer = document.getElementById(`player-${uid}`);
+        if (!playerContainer) return;
+        
+        overlay = document.createElement("div");
+        overlay.id = overlayId;
+        overlay.style.cssText = "display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #3c4043; align-items: center; justify-content: center; z-index: 5;";
+        
+        const initial = usernameStr ? usernameStr.charAt(0).toUpperCase() : "U";
+        const color = usernameStr ? getColorForUsername(usernameStr) : "#8b5cf6";
+        
+        overlay.innerHTML = `<div style="width: 60px; height: 60px; border-radius: 50%; background: ${color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 600;">${initial}</div>`;
+        playerContainer.appendChild(overlay);
+    }
+    
+    if (overlay) {
+        overlay.style.display = isMuted ? 'flex' : 'none';
+        
+        // Update Local Initials specifically
+        if(uid === "local" && isMuted) {
+            const myName = localStorage.getItem('currentUser') || "M";
+            const circle = document.getElementById("local-avatar-circle");
+            if(circle) {
+                circle.innerText = myName.charAt(0).toUpperCase();
+                circle.style.backgroundColor = getColorForUsername(myName);
+            }
+        }
+    }
+}
+
+// ------------------------------------------
+// THE LAYOUT ENGINE
+// ------------------------------------------
+function resetBoxStyle(box) {
+    box.style.position = 'relative';
+    box.style.bottom = 'auto';
+    box.style.right = 'auto';
+    box.style.left = 'auto';
+    box.style.top = 'auto';
+    box.style.width = '100%';
+    box.style.height = '100%';
+    box.style.border = 'none';
+    box.style.borderRadius = '8px';
+    box.style.boxShadow = 'none';
+    box.style.zIndex = '1';
+    box.style.cursor = 'pointer';
+    box.style.pointerEvents = 'auto';
+    box.style.flex = 'none';
+}
+
 function updateVideoLayout() {
     const localCam = document.getElementById('local-player');
     const localScreen = document.getElementById('local-screen-preview');
+    const wbContainer = document.getElementById('whiteboard-container');
     const remotePlayers = Array.from(document.querySelectorAll('[id^="player-"]'));
-    
-    const allBoxes = [localCam, localScreen, ...remotePlayers].filter(el => el !== null);
-    
-    const heroZone = document.getElementById('hero-zone');
+
+    let allBoxes = [localCam, localScreen, ...remotePlayers].filter(el => el !== null);
+
+    // Inject/Extract Whiteboard from active elements array
+    if (isWhiteboardActive) {
+        wbContainer.style.display = 'flex';
+        if (!allBoxes.includes(wbContainer)) allBoxes.push(wbContainer);
+    } else {
+        wbContainer.style.display = 'none';
+        if (wbContainer.parentElement) wbContainer.parentElement.removeChild(wbContainer);
+        allBoxes = allBoxes.filter(b => b !== wbContainer);
+    }
+
+    const centerStage = document.getElementById('center-stage');
     const sidebarZone = document.getElementById('sidebar-zone');
     const defaultZone = document.getElementById('default-zone');
-    const remotePlayerList = document.getElementById('remote-playerlist');
 
-    // Condition for Presentation Mode: A local screen exists, OR there are 2+ remote feeds
-    const hasScreenShare = localScreen !== null || remotePlayers.length > 1;
+    // Condition for Presentation Mode
+    const hasPresentation = localScreen || remotePlayers.length > 1 || isWhiteboardActive;
 
-    if (hasScreenShare) {
-        heroZone.style.display = 'block';
+    if (hasPresentation) {
+        centerStage.style.display = 'flex';
         sidebarZone.style.display = 'flex';
         defaultZone.style.display = 'none';
 
-        let currentHero = heroZone.children[0];
-        
-        // Auto-assign hero if empty
-        if (!currentHero) {
-            if (localScreen) {
-                currentHero = localScreen;
-            } else {
-                // Find the remote screen share (the one whose ID doesn't contain the active user ID)
-                const remoteScreen = remotePlayers.find(el => !el.id.includes(currentChatUserId));
-                currentHero = remoteScreen || remotePlayers[0] || localCam;
-            }
+        // Filter out dead heroes
+        let heroes = Array.from(centerStage.children);
+        heroes = heroes.filter(h => allBoxes.includes(h));
+
+        let targetHeroCount = isSplitScreen ? 2 : 1;
+
+        // Auto-assign heroes if we are short
+        while (heroes.length < targetHeroCount && heroes.length < allBoxes.length) {
+            // Priority: Screen Shares -> Whiteboard -> Remote Cam -> Local Cam
+            let candidate = allBoxes.find(b => !heroes.includes(b) && (b.id === 'local-screen-preview' || b.id.includes('scr')));
+            if (!candidate) candidate = allBoxes.find(b => !heroes.includes(b) && b.id === 'whiteboard-container');
+            if (!candidate) candidate = allBoxes.find(b => !heroes.includes(b) && b.id.startsWith('player-'));
+            if (!candidate) candidate = allBoxes.find(b => !heroes.includes(b));
+            
+            if (candidate) heroes.push(candidate);
         }
 
-        // Distribute boxes
-        allBoxes.forEach(box => {
-            box.style.cursor = 'pointer'; 
-            box.style.position = 'relative'; 
-            box.style.bottom = 'auto';
-            box.style.right = 'auto';
-            box.style.pointerEvents = 'auto';
-            box.style.boxShadow = 'none'; 
+        // If split screen turned off, drop the second hero
+        if (heroes.length > targetHeroCount) {
+            heroes = heroes.slice(0, targetHeroCount);
+        }
 
-            if (box === currentHero) {
-                heroZone.appendChild(box);
-                box.style.width = '100%';
-                box.style.height = '100%';
+        // Place elements correctly
+        allBoxes.forEach(box => {
+            resetBoxStyle(box);
+            if (heroes.includes(box)) {
+                centerStage.appendChild(box);
+                box.style.flex = '1';
+                box.style.minWidth = '0'; 
                 box.style.border = 'none';
-                box.style.borderRadius = '8px';
+                box.style.cursor = 'default';
+                box.onclick = null; 
             } else {
                 sidebarZone.appendChild(box);
-                box.style.width = '100%';
-                box.style.height = '160px'; 
-                box.style.flexShrink = '0';
-                box.style.border = '1px solid #5f6368';
-                box.style.borderRadius = '8px';
+                box.style.flex = 'none'; 
+                box.style.height = '160px';
+                box.style.border = '2px solid #5f6368'; 
+                box.onclick = () => swapToHero(box);
             }
-            
-            box.onclick = () => swapToHero(box);
         });
 
     } else {
         // DEFAULT MODE
-        heroZone.style.display = 'none';
+        centerStage.style.display = 'none';
         sidebarZone.style.display = 'none';
         defaultZone.style.display = 'flex';
 
+        if (remotePlayers.length > 0) {
+            const remoteBox = remotePlayers[0];
+            resetBoxStyle(remoteBox);
+            defaultZone.appendChild(remoteBox);
+            remoteBox.style.cursor = 'default';
+            remoteBox.onclick = null;
+        }
+
         if (localCam) {
-            defaultZone.appendChild(localCam); 
+            resetBoxStyle(localCam);
+            defaultZone.appendChild(localCam);
             localCam.style.position = 'absolute';
             localCam.style.bottom = '20px';
             localCam.style.right = '20px';
             localCam.style.width = '240px';
             localCam.style.height = '160px';
             localCam.style.border = '1px solid #5f6368';
-            localCam.style.borderRadius = '8px';
             localCam.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
             localCam.style.zIndex = '10';
             localCam.style.cursor = 'default';
-            localCam.onclick = null; 
-        }
-
-        if (remotePlayers.length > 0) {
-            remotePlayerList.appendChild(remotePlayers[0]);
-            remotePlayers[0].style.width = '100%';
-            remotePlayers[0].style.height = '100%';
-            remotePlayers[0].style.position = 'relative';
-            remotePlayers[0].style.border = 'none';
-            remotePlayers[0].style.borderRadius = '8px';
-            remotePlayers[0].style.cursor = 'default';
-            remotePlayers[0].onclick = null;
+            localCam.onclick = null;
         }
     }
 }
 
-// Click-to-swap logic for the Presentation Gallery
 function swapToHero(clickedBox) {
-    if (clickedBox.parentElement.id === 'sidebar-zone') {
-        const heroZone = document.getElementById('hero-zone');
-        const sidebarZone = document.getElementById('sidebar-zone');
-        const currentHero = heroZone.children[0];
+    const centerStage = document.getElementById('center-stage');
+    let heroes = Array.from(centerStage.children);
 
-        if (currentHero) {
-            sidebarZone.insertBefore(currentHero, clickedBox); 
-            currentHero.style.width = '100%';
-            currentHero.style.height = '160px';
-            currentHero.style.flexShrink = '0';
-            currentHero.style.border = '1px solid #5f6368';
-        }
-
-        heroZone.appendChild(clickedBox);
-        clickedBox.style.width = '100%';
-        clickedBox.style.height = '100%';
-        clickedBox.style.border = 'none';
+    if (heroes.length > 0) {
+        // Swap with the primary hero
+        const heroToDemote = heroes[0];
+        centerStage.insertBefore(clickedBox, heroToDemote);
+        document.getElementById('sidebar-zone').appendChild(heroToDemote);
+        updateVideoLayout(); 
     }
 }
 
+// ------------------------------------------
+// CORE VIDEO FUNCTIONS
+// ------------------------------------------
 async function startVideoCall() {
     if (!currentChatUserId) return;
     
@@ -1493,6 +1563,16 @@ async function joinVideoRoomFromInvite(roomName) {
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
+    // Listener for Camera Mutes from the other person
+    rtc.client.on("user-info-updated", (uid, msg) => {
+        if (msg === "mute-video") {
+            const chatName = document.getElementById('chat-header-name').innerText || "U";
+            updateAvatarOverlay(uid, true, chatName);
+        } else if (msg === "unmute-video") {
+            updateAvatarOverlay(uid, false);
+        }
+    });
+
     rtc.client.on("user-published", async (user, mediaType) => {
         await rtc.client.subscribe(user, mediaType);
         
@@ -1509,9 +1589,9 @@ async function joinCall() {
                 const playerContainer = document.createElement("div");
                 playerContainer.id = `player-${user.uid}`;
                 playerContainer.style.background = "#202124"; 
-                document.body.appendChild(playerContainer); // Temp append
+                document.body.appendChild(playerContainer); 
             }
-            // FIT CONTAIN ensures video scales without cropping
+            // Using fit: contain safely prevents ANY clipping for remote users
             user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
             updateVideoLayout();
         }
@@ -1527,7 +1607,7 @@ async function joinCall() {
     });
 
     rtc.client.on("user-left", (user) => {
-        // ONLY drop the call if the actual person disconnects
+        // ONLY drop the call if the actual person disconnects, not their screen share bot
         if (user.uid == currentChatUserId) {
             const chatName = document.getElementById('chat-header-name').innerText || "The other user";
             showToast(`${chatName} disconnected.`);
@@ -1544,11 +1624,12 @@ async function joinCall() {
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         
         const localPlayer = document.getElementById("local-player");
-        localPlayer.innerHTML = ""; 
-        
-        // Remove "No Camera" text if it was there
+        // Wipe error states before playing
         if (localPlayer.querySelector('i[data-lucide="video-off"]')) {
-            localPlayer.innerHTML = ""; 
+            const children = Array.from(localPlayer.children);
+            children.forEach(c => {
+                if (c.id !== "local-avatar-overlay") c.remove();
+            });
         }
         
         rtc.localVideoTrack.play("local-player", { fit: "cover" }); 
@@ -1565,7 +1646,11 @@ async function joinCall() {
             }
 
             const localPlayer = document.getElementById("local-player");
-            localPlayer.innerHTML = `<div style="color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found</div>`;
+            // inject error state cleanly without destroying the overlay
+            const errDiv = document.createElement("div");
+            errDiv.style.cssText = "color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px; position:absolute; top:0; left:0; width:100%; z-index:4;";
+            errDiv.innerHTML = `<i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found`;
+            localPlayer.appendChild(errDiv);
             lucide.createIcons(); 
             
             showToast("Camera not detected. Falling back to audio-only.");
@@ -1574,7 +1659,8 @@ async function joinCall() {
                 rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
                 await rtc.client.publish([rtc.localAudioTrack]);
             } catch (audioError) {
-                localPlayer.innerHTML = `<div style="color: #ef4444; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px;"><i data-lucide="mic-off" style="width: 24px; height: 24px;"></i> No Hardware</div>`;
+                errDiv.innerHTML = `<i data-lucide="mic-off" style="width: 24px; height: 24px;"></i> No Hardware`;
+                errDiv.style.color = "#ef4444";
                 lucide.createIcons();
             }
         }
@@ -1607,6 +1693,7 @@ async function endCallButtonAction() {
 
 async function cleanupVideoEngine() {
     await stopScreenShare(); 
+    closeWhiteboardRoom();
     
     if (rtc.localAudioTrack) { rtc.localAudioTrack.close(); rtc.localAudioTrack = null; }
     if (rtc.localVideoTrack) { rtc.localVideoTrack.close(); rtc.localVideoTrack = null; }
@@ -1631,20 +1718,26 @@ async function cleanupVideoEngine() {
     noCameraDetected = false;
     isCallConnected = false;
     isWaitingForPickup = false;
+    isWhiteboardActive = false;
+    isSplitScreen = false;
     
+    // Reset buttons
     const camBtn = document.getElementById('btn-cam');
-    if(camBtn) {
-        camBtn.classList.remove('active-off');
-        camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
-    }
+    if(camBtn) { camBtn.classList.remove('active-off'); camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`; }
     const micBtn = document.getElementById('btn-mic');
-    if(micBtn) {
-        micBtn.classList.remove('active-off');
-        micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`;
-    }
+    if(micBtn) { micBtn.classList.remove('active-off'); micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`; }
+    const wbBtn = document.getElementById('btn-whiteboard');
+    if(wbBtn) { wbBtn.style.background = ""; wbBtn.style.color = ""; }
+    const splitBtn = document.getElementById('btn-layout');
+    if(splitBtn) { splitBtn.style.background = ""; }
+    
+    updateAvatarOverlay("local", false);
     lucide.createIcons();
 }
 
+// ------------------------------------------
+// FEATURE TOGGLES
+// ------------------------------------------
 function toggleMic() {
     if(!rtc.localAudioTrack) return;
     isAudioMuted = !isAudioMuted;
@@ -1679,6 +1772,8 @@ function toggleCam() {
         btn.classList.remove('active-off');
         btn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`;
     }
+    
+    updateAvatarOverlay("local", isVideoMuted);
     lucide.createIcons();
 }
 
@@ -1704,9 +1799,8 @@ async function toggleScreenShare() {
             previewContainer.style.background = "#202124";
             document.body.appendChild(previewContainer); 
             
-            // FIT CONTAIN: Ensures local preview isn't cropped
             rtc.screenTrack.play(previewContainer, { fit: "contain" });
-            updateVideoLayout(); // Trigger Layout Engine!
+            updateVideoLayout(); 
 
             const btn = document.getElementById('btn-screen');
             if(btn) {
@@ -1748,13 +1842,124 @@ async function stopScreenShare() {
     
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
-    updateVideoLayout(); // Trigger Layout Engine to collapse back to default view
+    updateVideoLayout(); 
     
     const btn = document.getElementById('btn-screen');
     if(btn) {
         btn.style.background = ""; 
         btn.style.color = "";
     }
+}
+
+// --- FASTBOARD API LOGIC ---
+async function toggleWhiteboard() {
+    if (!isCallConnected) {
+        showToast("You must be connected to use the whiteboard.");
+        return;
+    }
+
+    if (!isWhiteboardActive) {
+        showToast("Generating secure Whiteboard token...");
+        try {
+            // Ask your Render backend to generate the netless keys
+            const res = await fetch('/wbCreate');
+            if(!res.ok) throw new Error("Backend failed to create board.");
+            
+            const { uuid, token, appIdentifier } = await res.json();
+            
+            await injectFastboard(appIdentifier, uuid, token);
+
+            isWhiteboardActive = true;
+            const btn = document.getElementById('btn-whiteboard');
+            if(btn) { btn.style.background = "#8b5cf6"; btn.style.color = "white"; }
+            
+            updateVideoLayout();
+
+            // Broadcast the room UUID so the other user joins the exact same board
+            const currentUserId = localStorage.getItem('currentUserId');
+            await supabaseClient.from('messages').insert([{
+                sender_id: currentUserId, receiver_id: currentChatUserId, content: `[WB_STATE]:true:${uuid}`
+            }]);
+
+        } catch (e) {
+            console.error(e);
+            showToast("Error connecting to Whiteboard server.");
+        }
+
+    } else {
+        // Broadcaster kills board
+        closeWhiteboardRoom();
+        const currentUserId = localStorage.getItem('currentUserId');
+        await supabaseClient.from('messages').insert([{
+            sender_id: currentUserId, receiver_id: currentChatUserId, content: `[WB_STATE]:false`
+        }]);
+    }
+}
+
+async function joinWhiteboardRoom(uuid) {
+    try {
+        const res = await fetch(`/wbJoin?uuid=${uuid}`);
+        if(!res.ok) throw new Error("Backend failed to generate join token.");
+        
+        const { token, appIdentifier } = await res.json();
+        await injectFastboard(appIdentifier, uuid, token);
+        
+        isWhiteboardActive = true;
+        const btn = document.getElementById('btn-whiteboard');
+        if(btn) { btn.style.background = "#8b5cf6"; btn.style.color = "white"; }
+        updateVideoLayout();
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+async function injectFastboard(appId, uuid, token) {
+    const mountEl = document.getElementById('fastboard-mount');
+    mountEl.innerHTML = ""; 
+    
+    // Safety check if Fastboard CDN failed to load
+    if (typeof Fastboard === "undefined") {
+        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>Fastboard SDK not loaded. Check internet connection.</div>";
+        return;
+    }
+
+    try {
+        fastboardApp = await Fastboard.createFastboard({
+            appIdentifier: appId,
+            roomUUID: uuid,
+            roomToken: token,
+            region: "us-sv", 
+            container: mountEl
+        });
+    } catch(e) {
+        console.error(e);
+        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>API Keys rejected. Make sure Netless App ID and Token are configured in server.js</div>";
+    }
+}
+
+function closeWhiteboardRoom() {
+    if(fastboardApp) {
+        fastboardApp.destroy();
+        fastboardApp = null;
+    }
+    const mountEl = document.getElementById('fastboard-mount');
+    if (mountEl) mountEl.innerHTML = "";
+    
+    isWhiteboardActive = false;
+    const btn = document.getElementById('btn-whiteboard');
+    if(btn) { btn.style.background = ""; btn.style.color = ""; }
+    
+    updateVideoLayout();
+}
+
+function toggleSplitScreen() {
+    isSplitScreen = !isSplitScreen;
+    const btn = document.getElementById('btn-layout');
+    if(btn) {
+        btn.style.background = isSplitScreen ? "#8b5cf6" : "";
+        btn.style.color = isSplitScreen ? "white" : "";
+    }
+    updateVideoLayout();
 }
 
 let callInterval;
@@ -1783,6 +1988,9 @@ function stopCallTimer() {
 function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
     if (existing) existing.remove();
+
+    // Trigger ringtone here since we bypassed the dialtone
+    playRingtone();
 
     const avatarHtml = avatarUrl 
         ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
@@ -1836,6 +2044,7 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
 window.rejectCall = async function(callerId) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone(); // Clean up audio
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -1858,6 +2067,7 @@ window.rejectCallWithReason = async function(callerId) {
     
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone(); // Clean up audio
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -1872,6 +2082,7 @@ window.rejectCallWithReason = async function(callerId) {
 window.acceptCall = function(callerId, roomName) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
+    stopRingtone(); // Clean up audio
     
     if (window.location.pathname.includes('messages.html')) {
         supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
