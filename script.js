@@ -15,10 +15,16 @@ function getAvatarHtml(user, size = 36) {
 }
 
 function getColorForUsername(username) {
+    if (!username) return '#8b5cf6';
     const colors = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#10b981', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#f43f5e'];
     let hash = 0;
     for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
+}
+
+// Ask for notification permission early
+if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+    Notification.requestPermission();
 }
 
 // ==========================================
@@ -405,7 +411,6 @@ async function handleSignIn() {
     if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
     localStorage.setItem('currentUserId', data[0].id); localStorage.setItem('currentUser', data[0].username); window.location.href = "index.html";
 }
-
 
 // ==========================================
 // 4. UI LOGIC & NAVBAR DROPDOWNS
@@ -1142,12 +1147,17 @@ function setupRealtimeListeners() {
 
                         if (data.content.startsWith('[CALL_INVITE]:')) {
                             const roomName = data.content.split(':')[1];
-                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
+                            // Safer profile fetch to prevent popup crashes
+                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single()
+                            .then(({data: caller}) => {
                                 if (caller) {
-                                    let avatar = caller.profiles && caller.profiles.avatar_url ? caller.profiles.avatar_url : null;
-                                    showIncomingCallModal(data.sender_id, caller.username, avatar, roomName);
+                                    let avatar = null;
+                                    if (caller.profiles) {
+                                        avatar = Array.isArray(caller.profiles) ? caller.profiles[0]?.avatar_url : caller.profiles.avatar_url;
+                                    }
+                                    showIncomingCallModal(data.sender_id, caller.username || "Someone", avatar, roomName);
                                 }
-                            });
+                            }).catch(e => console.error("Error displaying call popup:", e));
                         }
                         else if (data.content.startsWith('[CALL_ENDED]:')) {
                             if (isCallConnected || isWaitingForPickup) {
@@ -1314,7 +1324,7 @@ let isWaitingForPickup = false;
 let isScreenSharing = false;
 let isWhiteboardActive = false;
 let isSplitScreen = false;
-let fastboardApp = null; // Holds the Path A Whiteboard instance
+let fastboardApp = null; 
 
 const connectAudio = new Audio('https://actions.google.com/sounds/v1/ui/positive_notification.ogg');
 
@@ -1343,12 +1353,11 @@ function generateSafeRoomName(id1, id2) {
     return safeName.substring(0, 64);
 }
 
-// Helper to handle avatar overlays for muted cameras
+// Dynamically injects colored avatar circles when cameras are muted
 function updateAvatarOverlay(uid, isMuted, usernameStr) {
     let overlayId = uid === "local" ? "local-avatar-overlay" : `avatar-overlay-${uid}`;
     let overlay = document.getElementById(overlayId);
     
-    // Local player has the overlay hardcoded in HTML. Remote players need it injected dynamically.
     if (!overlay && uid !== "local") {
         const playerContainer = document.getElementById(`player-${uid}`);
         if (!playerContainer) return;
@@ -1367,7 +1376,6 @@ function updateAvatarOverlay(uid, isMuted, usernameStr) {
     if (overlay) {
         overlay.style.display = isMuted ? 'flex' : 'none';
         
-        // Update Local Initials specifically
         if(uid === "local" && isMuted) {
             const myName = localStorage.getItem('currentUser') || "M";
             const circle = document.getElementById("local-avatar-circle");
@@ -1421,7 +1429,6 @@ function updateVideoLayout() {
     const sidebarZone = document.getElementById('sidebar-zone');
     const defaultZone = document.getElementById('default-zone');
 
-    // Condition for Presentation Mode
     const hasPresentation = localScreen || remotePlayers.length > 1 || isWhiteboardActive;
 
     if (hasPresentation) {
@@ -1429,15 +1436,12 @@ function updateVideoLayout() {
         sidebarZone.style.display = 'flex';
         defaultZone.style.display = 'none';
 
-        // Filter out dead heroes
         let heroes = Array.from(centerStage.children);
         heroes = heroes.filter(h => allBoxes.includes(h));
 
         let targetHeroCount = isSplitScreen ? 2 : 1;
 
-        // Auto-assign heroes if we are short
         while (heroes.length < targetHeroCount && heroes.length < allBoxes.length) {
-            // Priority: Screen Shares -> Whiteboard -> Remote Cam -> Local Cam
             let candidate = allBoxes.find(b => !heroes.includes(b) && (b.id === 'local-screen-preview' || b.id.includes('scr')));
             if (!candidate) candidate = allBoxes.find(b => !heroes.includes(b) && b.id === 'whiteboard-container');
             if (!candidate) candidate = allBoxes.find(b => !heroes.includes(b) && b.id.startsWith('player-'));
@@ -1446,12 +1450,10 @@ function updateVideoLayout() {
             if (candidate) heroes.push(candidate);
         }
 
-        // If split screen turned off, drop the second hero
         if (heroes.length > targetHeroCount) {
             heroes = heroes.slice(0, targetHeroCount);
         }
 
-        // Place elements correctly
         allBoxes.forEach(box => {
             resetBoxStyle(box);
             if (heroes.includes(box)) {
@@ -1506,7 +1508,6 @@ function swapToHero(clickedBox) {
     let heroes = Array.from(centerStage.children);
 
     if (heroes.length > 0) {
-        // Swap with the primary hero
         const heroToDemote = heroes[0];
         centerStage.insertBefore(clickedBox, heroToDemote);
         document.getElementById('sidebar-zone').appendChild(heroToDemote);
@@ -1607,7 +1608,6 @@ async function joinCall() {
     });
 
     rtc.client.on("user-left", (user) => {
-        // ONLY drop the call if the actual person disconnects, not their screen share bot
         if (user.uid == currentChatUserId) {
             const chatName = document.getElementById('chat-header-name').innerText || "The other user";
             showToast(`${chatName} disconnected.`);
@@ -1721,15 +1721,20 @@ async function cleanupVideoEngine() {
     isWhiteboardActive = false;
     isSplitScreen = false;
     
-    // Reset buttons
-    const camBtn = document.getElementById('btn-cam');
-    if(camBtn) { camBtn.classList.remove('active-off'); camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`; }
-    const micBtn = document.getElementById('btn-mic');
-    if(micBtn) { micBtn.classList.remove('active-off'); micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`; }
+   const micBtn = document.getElementById('btn-mic');
+    if(micBtn) { 
+        micBtn.classList.remove('active-off'); 
+        micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`; 
+    }
     const wbBtn = document.getElementById('btn-whiteboard');
-    if(wbBtn) { wbBtn.style.background = ""; wbBtn.style.color = ""; }
+    if(wbBtn) { 
+        wbBtn.style.background = ""; 
+        wbBtn.style.color = ""; 
+    }
     const splitBtn = document.getElementById('btn-layout');
-    if(splitBtn) { splitBtn.style.background = ""; }
+    if(splitBtn) { 
+        splitBtn.style.background = ""; 
+    }
     
     updateAvatarOverlay("local", false);
     lucide.createIcons();
@@ -1799,8 +1804,9 @@ async function toggleScreenShare() {
             previewContainer.style.background = "#202124";
             document.body.appendChild(previewContainer); 
             
+            // FIT CONTAIN: Ensures local preview isn't cropped
             rtc.screenTrack.play(previewContainer, { fit: "contain" });
-            updateVideoLayout(); 
+            updateVideoLayout(); // Trigger Layout Engine!
 
             const btn = document.getElementById('btn-screen');
             if(btn) {
@@ -1842,7 +1848,7 @@ async function stopScreenShare() {
     
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
-    updateVideoLayout(); 
+    updateVideoLayout(); // Trigger Layout Engine to collapse back to default view
     
     const btn = document.getElementById('btn-screen');
     if(btn) {
@@ -1861,12 +1867,10 @@ async function toggleWhiteboard() {
     if (!isWhiteboardActive) {
         showToast("Generating secure Whiteboard token...");
         try {
-            // Ask your Render backend to generate the netless keys
             const res = await fetch('/wbCreate');
             if(!res.ok) throw new Error("Backend failed to create board.");
             
             const { uuid, token, appIdentifier } = await res.json();
-            
             await injectFastboard(appIdentifier, uuid, token);
 
             isWhiteboardActive = true;
@@ -1875,7 +1879,6 @@ async function toggleWhiteboard() {
             
             updateVideoLayout();
 
-            // Broadcast the room UUID so the other user joins the exact same board
             const currentUserId = localStorage.getItem('currentUserId');
             await supabaseClient.from('messages').insert([{
                 sender_id: currentUserId, receiver_id: currentChatUserId, content: `[WB_STATE]:true:${uuid}`
@@ -1887,7 +1890,6 @@ async function toggleWhiteboard() {
         }
 
     } else {
-        // Broadcaster kills board
         closeWhiteboardRoom();
         const currentUserId = localStorage.getItem('currentUserId');
         await supabaseClient.from('messages').insert([{
@@ -1917,7 +1919,6 @@ async function injectFastboard(appId, uuid, token) {
     const mountEl = document.getElementById('fastboard-mount');
     mountEl.innerHTML = ""; 
     
-    // Safety check if Fastboard CDN failed to load
     if (typeof Fastboard === "undefined") {
         mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>Fastboard SDK not loaded. Check internet connection.</div>";
         return;
@@ -1989,8 +1990,13 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
     if (existing) existing.remove();
 
-    // Trigger ringtone here since we bypassed the dialtone
-    playRingtone();
+    // Safely request desktop notification if user is tabbed out
+    if ("Notification" in window && Notification.permission === 'granted') {
+        new Notification(`Incoming Call`, {
+            body: `${callerName} is calling you on SkillSwap!`,
+            icon: avatarUrl || 'https://cdn-icons-png.flaticon.com/512/3059/3059983.png'
+        });
+    }
 
     const avatarHtml = avatarUrl 
         ? `<img src="${avatarUrl}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
@@ -2044,7 +2050,6 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
 window.rejectCall = async function(callerId) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone(); // Clean up audio
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -2067,7 +2072,6 @@ window.rejectCallWithReason = async function(callerId) {
     
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone(); // Clean up audio
     
     const currentUserId = localStorage.getItem('currentUserId');
     await supabaseClient.from('messages').insert([{
@@ -2082,7 +2086,6 @@ window.rejectCallWithReason = async function(callerId) {
 window.acceptCall = function(callerId, roomName) {
     const popup = document.getElementById('incoming-call-popup');
     if(popup) popup.remove();
-    stopRingtone(); // Clean up audio
     
     if (window.location.pathname.includes('messages.html')) {
         supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', callerId).single().then(({data: caller}) => {
