@@ -2,16 +2,23 @@ const express = require('express');
 const cors = require('cors');
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 const axios = require('axios');
+const path = require('path');
 
 const app = express();
 app.use(cors());
+
+// ==========================================
+// SERVE FRONTEND FILES
+// ==========================================
+// This tells your server to display your HTML, CSS, and JS files!
+app.use(express.static(__dirname));
 
 // ==========================================
 // 1. AGORA VIDEO CREDENTIALS
 // ==========================================
 const APP_ID = '8adb28c71a9e40f8905245db411405ff';
 // IMPORTANT: Don't forget to paste your Video App Certificate back in here!
-const APP_CERTIFICATE = 'cdeb8a23c2bb4d539b52e6fd35e59f33'; 
+const APP_CERTIFICATE = 'cdeb8a23c2bb4d539b52e6fd35e59f33';
 
 // ==========================================
 // 2. AGORA WHITEBOARD (FASTBOARD) CREDENTIALS
