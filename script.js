@@ -22,7 +22,6 @@ function getColorForUsername(username) {
     return colors[Math.abs(hash) % colors.length];
 }
 
-// Ask for notification permission early
 if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
     Notification.requestPermission();
 }
@@ -607,7 +606,6 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        // Skip rendering silent system pings for whiteboard state
         if (!msg.content.startsWith('[WB_STATE]:')) {
             chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
         }
@@ -1094,6 +1092,8 @@ function closeAllCertsModal() { document.getElementById('all-certs-modal').style
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
 // ==========================================
+let isCleaningUp = false;
+
 function setupRealtimeListeners() {
     const currentUserId = localStorage.getItem('currentUserId');
 
@@ -1147,40 +1147,31 @@ function setupRealtimeListeners() {
 
                         if (data.content.startsWith('[CALL_INVITE]:')) {
                             const roomName = data.content.split(':')[1];
-                            // Safer profile fetch to prevent popup crashes
-                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single()
-                            .then(({data: caller}) => {
+                            supabaseClient.from('app_users').select('username, profiles(avatar_url)').eq('id', data.sender_id).single().then(({data: caller}) => {
                                 if (caller) {
                                     let avatar = null;
-                                    if (caller.profiles) {
-                                        avatar = Array.isArray(caller.profiles) ? caller.profiles[0]?.avatar_url : caller.profiles.avatar_url;
-                                    }
+                                    if (caller.profiles) avatar = Array.isArray(caller.profiles) ? caller.profiles[0]?.avatar_url : caller.profiles.avatar_url;
                                     showIncomingCallModal(data.sender_id, caller.username || "Someone", avatar, roomName);
                                 }
                             }).catch(e => console.error("Error displaying call popup:", e));
                         }
                         else if (data.content.startsWith('[CALL_ENDED]:')) {
-                            if (isCallConnected || isWaitingForPickup) {
+                            if ((isCallConnected || isWaitingForPickup) && !isCleaningUp) {
                                 cleanupVideoEngine();
                             }
                         }
                         else if (data.content === '[CALL_MISSED]') {
                             const popup = document.getElementById('incoming-call-popup');
                             if(popup) popup.remove();
-                            if (isCallConnected || isWaitingForPickup) {
+                            if ((isCallConnected || isWaitingForPickup) && !isCleaningUp) {
                                 cleanupVideoEngine();
                             }
                         }
                         else if (data.content.startsWith('[WB_STATE]:')) {
                             const parts = data.content.split(':');
                             const state = parts[1] === 'true';
-                            
-                            if (state) {
-                                const uuid = parts[2];
-                                joinWhiteboardRoom(uuid);
-                            } else {
-                                closeWhiteboardRoom();
-                            }
+                            if (state) joinWhiteboardRoom(parts[2]);
+                            else closeWhiteboardRoom();
                         }
 
                         if (currentChatUserId && data.sender_id == currentChatUserId) {
@@ -1188,7 +1179,6 @@ function setupRealtimeListeners() {
                             const chatArea = document.getElementById('chat-messages-area');
                             if (chatArea && chatArea.innerHTML.includes('Say hi')) chatArea.innerHTML = '';
                             if (chatArea) {
-                                // Hide secret system pings from chat
                                 if (!data.content.startsWith('[WB_STATE]:')) {
                                     chatArea.innerHTML += createMessageHtml(data, false);
                                 }
@@ -1353,7 +1343,6 @@ function generateSafeRoomName(id1, id2) {
     return safeName.substring(0, 64);
 }
 
-// Dynamically injects colored avatar circles when cameras are muted
 function updateAvatarOverlay(uid, isMuted, usernameStr) {
     let overlayId = uid === "local" ? "local-avatar-overlay" : `avatar-overlay-${uid}`;
     let overlay = document.getElementById(overlayId);
@@ -1415,7 +1404,6 @@ function updateVideoLayout() {
 
     let allBoxes = [localCam, localScreen, ...remotePlayers].filter(el => el !== null);
 
-    // Inject/Extract Whiteboard from active elements array
     if (isWhiteboardActive) {
         wbContainer.style.display = 'flex';
         if (!allBoxes.includes(wbContainer)) allBoxes.push(wbContainer);
@@ -1473,7 +1461,6 @@ function updateVideoLayout() {
         });
 
     } else {
-        // DEFAULT MODE
         centerStage.style.display = 'none';
         sidebarZone.style.display = 'none';
         defaultZone.style.display = 'flex';
@@ -1564,7 +1551,6 @@ async function joinVideoRoomFromInvite(roomName) {
 async function joinCall() {
     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
-    // Listener for Camera Mutes from the other person
     rtc.client.on("user-info-updated", (uid, msg) => {
         if (msg === "mute-video") {
             const chatName = document.getElementById('chat-header-name').innerText || "U";
@@ -1592,7 +1578,6 @@ async function joinCall() {
                 playerContainer.style.background = "#202124"; 
                 document.body.appendChild(playerContainer); 
             }
-            // Using fit: contain safely prevents ANY clipping for remote users
             user.videoTrack.play(`player-${user.uid}`, { fit: "contain" });
             updateVideoLayout();
         }
@@ -1608,7 +1593,7 @@ async function joinCall() {
     });
 
     rtc.client.on("user-left", (user) => {
-        if (user.uid == currentChatUserId) {
+        if (user.uid == currentChatUserId && !isCleaningUp) {
             const chatName = document.getElementById('chat-header-name').innerText || "The other user";
             showToast(`${chatName} disconnected.`);
             setTimeout(() => {
@@ -1624,7 +1609,6 @@ async function joinCall() {
         [rtc.localAudioTrack, rtc.localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         
         const localPlayer = document.getElementById("local-player");
-        // Wipe error states before playing
         if (localPlayer.querySelector('i[data-lucide="video-off"]')) {
             const children = Array.from(localPlayer.children);
             children.forEach(c => {
@@ -1646,7 +1630,6 @@ async function joinCall() {
             }
 
             const localPlayer = document.getElementById("local-player");
-            // inject error state cleanly without destroying the overlay
             const errDiv = document.createElement("div");
             errDiv.style.cssText = "color: #9ca3af; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 8px; position:absolute; top:0; left:0; width:100%; z-index:4;";
             errDiv.innerHTML = `<i data-lucide="video-off" style="width: 24px; height: 24px;"></i> No Camera Found`;
@@ -1668,6 +1651,9 @@ async function joinCall() {
 }
 
 async function endCallButtonAction() {
+    if (isCleaningUp) return;
+    isCleaningUp = true;
+
     if (isCallConnected && currentChatUserId) {
         const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
         const secs = String(callSeconds % 60).padStart(2, '0');
@@ -1692,6 +1678,7 @@ async function endCallButtonAction() {
 }
 
 async function cleanupVideoEngine() {
+    isCleaningUp = true; 
     await stopScreenShare(); 
     closeWhiteboardRoom();
     
@@ -1721,23 +1708,19 @@ async function cleanupVideoEngine() {
     isWhiteboardActive = false;
     isSplitScreen = false;
     
-   const micBtn = document.getElementById('btn-mic');
-    if(micBtn) { 
-        micBtn.classList.remove('active-off'); 
-        micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`; 
-    }
+    const camBtn = document.getElementById('btn-cam');
+    if(camBtn) { camBtn.classList.remove('active-off'); camBtn.innerHTML = `<i data-lucide="video" style="width: 20px; height: 20px;"></i>`; }
+    const micBtn = document.getElementById('btn-mic');
+    if(micBtn) { micBtn.classList.remove('active-off'); micBtn.innerHTML = `<i data-lucide="mic" style="width: 20px; height: 20px;"></i>`; }
     const wbBtn = document.getElementById('btn-whiteboard');
-    if(wbBtn) { 
-        wbBtn.style.background = ""; 
-        wbBtn.style.color = ""; 
-    }
+    if(wbBtn) { wbBtn.style.background = ""; wbBtn.style.color = ""; }
     const splitBtn = document.getElementById('btn-layout');
-    if(splitBtn) { 
-        splitBtn.style.background = ""; 
-    }
+    if(splitBtn) { splitBtn.style.background = ""; }
     
     updateAvatarOverlay("local", false);
     lucide.createIcons();
+
+    setTimeout(() => { isCleaningUp = false; }, 1000); 
 }
 
 // ------------------------------------------
@@ -1804,9 +1787,8 @@ async function toggleScreenShare() {
             previewContainer.style.background = "#202124";
             document.body.appendChild(previewContainer); 
             
-            // FIT CONTAIN: Ensures local preview isn't cropped
             rtc.screenTrack.play(previewContainer, { fit: "contain" });
-            updateVideoLayout(); // Trigger Layout Engine!
+            updateVideoLayout(); 
 
             const btn = document.getElementById('btn-screen');
             if(btn) {
@@ -1848,7 +1830,7 @@ async function stopScreenShare() {
     
     const preview = document.getElementById('local-screen-preview');
     if (preview) preview.remove();
-    updateVideoLayout(); // Trigger Layout Engine to collapse back to default view
+    updateVideoLayout(); 
     
     const btn = document.getElementById('btn-screen');
     if(btn) {
@@ -1919,22 +1901,22 @@ async function injectFastboard(appId, uuid, token) {
     const mountEl = document.getElementById('fastboard-mount');
     mountEl.innerHTML = ""; 
     
-    if (typeof Fastboard === "undefined") {
-        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>Fastboard SDK not loaded. Check internet connection.</div>";
+    if (!window.Fastboard) {
+        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>Fastboard SDK not loaded. Please refresh or check ad-blockers.</div>";
         return;
     }
 
     try {
-        fastboardApp = await Fastboard.createFastboard({
+        fastboardApp = await window.Fastboard.createFastboard({
             appIdentifier: appId,
             roomUUID: uuid,
             roomToken: token,
-            region: "us-sv", 
+            region: "in-mum", 
             container: mountEl
         });
     } catch(e) {
         console.error(e);
-        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>API Keys rejected. Make sure Netless App ID and Token are configured in server.js</div>";
+        mountEl.innerHTML = "<div style='padding:20px; color:#ef4444; text-align:center;'>API Keys rejected or network error.</div>";
     }
 }
 
@@ -1990,7 +1972,6 @@ function showIncomingCallModal(callerId, callerName, avatarUrl, roomName) {
     const existing = document.getElementById('incoming-call-popup');
     if (existing) existing.remove();
 
-    // Safely request desktop notification if user is tabbed out
     if ("Notification" in window && Notification.permission === 'granted') {
         new Notification(`Incoming Call`, {
             body: `${callerName} is calling you on SkillSwap!`,
