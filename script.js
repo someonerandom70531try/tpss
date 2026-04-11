@@ -876,7 +876,6 @@ async function openManageConnectionsModal() {
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
 async function removeConnection(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput }); }
 
-
 // ==========================================
 // 7. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
@@ -1088,7 +1087,6 @@ function openAllCertsModal() {
 }
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
 
-
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
 // ==========================================
@@ -1266,7 +1264,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-
 // ==========================================
 // 12. UI HELPERS (TOASTS)
 // ==========================================
@@ -1289,7 +1286,6 @@ function showToast(message) {
         setTimeout(() => toast.style.display = 'none', 300);
     }, 3500);
 }
-
 
 // ==========================================
 // 13. AGORA VIDEO ENGINE & LAYOUT MANAGER
@@ -1424,7 +1420,14 @@ function updateVideoLayout() {
         sidebarZone.style.display = 'flex';
         defaultZone.style.display = 'none';
 
-        let heroes = Array.from(centerStage.children);
+        // VERY IMPORTANT: Only grab valid boxes, ignore structural nodes!
+        let heroes = Array.from(centerStage.children).filter(child => 
+            child.id === 'local-screen-preview' || 
+            child.id === 'whiteboard-container' || 
+            child.id.startsWith('player-') ||
+            child.id === 'local-player'
+        );
+
         heroes = heroes.filter(h => allBoxes.includes(h));
 
         let targetHeroCount = isSplitScreen ? 2 : 1;
@@ -1492,7 +1495,12 @@ function updateVideoLayout() {
 
 function swapToHero(clickedBox) {
     const centerStage = document.getElementById('center-stage');
-    let heroes = Array.from(centerStage.children);
+    let heroes = Array.from(centerStage.children).filter(child => 
+        child.id === 'local-screen-preview' || 
+        child.id === 'whiteboard-container' || 
+        child.id.startsWith('player-') ||
+        child.id === 'local-player'
+    );
 
     if (heroes.length > 0) {
         const heroToDemote = heroes[0];
@@ -2084,10 +2092,8 @@ window.acceptCall = function(callerId, roomName) {
 // ==========================================
 // 15. PREVENT ACCIDENTAL DISCONNECTS
 // ==========================================
-// This fires if the user clicks Refresh, Back, or tries to close the tab
 window.addEventListener('beforeunload', function (e) {
     if (isCallConnected || isWaitingForPickup) {
-        // This triggers the native browser "Leave Site? Changes you made may not be saved" popup
         e.preventDefault();
         e.returnValue = ''; 
     }
