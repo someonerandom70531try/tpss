@@ -139,6 +139,24 @@ window.toggleDropdown = function(event) {
     if (userDropdown) userDropdown.classList.toggle('show');
 }
 
+// THIS IS THE FIXED FUNCTION
+window.toggleConnectionsDropdown = function(event) {
+    event.stopPropagation(); 
+    const userDropdown = document.getElementById('user-dropdown'); 
+    const connDropdown = document.getElementById('connections-dropdown'); 
+    const inboxDropdown = document.getElementById('inbox-dropdown');
+    
+    if (userDropdown) userDropdown.classList.remove('show'); 
+    if (inboxDropdown) inboxDropdown.classList.remove('show');
+    
+    if (connDropdown) { 
+        connDropdown.classList.toggle('show'); 
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
+            if (typeof loadTopConnections === 'function') loadTopConnections();
+        }
+    }
+};
+
 window.onclick = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown'); const inboxDropdown = document.getElementById('inbox-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
