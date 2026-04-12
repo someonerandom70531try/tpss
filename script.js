@@ -58,7 +58,8 @@ async function loadSkills() {
     if (!carouselTrack) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
-    const { data: rawSkills } = await supabaseClient.from('skills').select('*').order('created_at', { ascending: false });
+    // Only fetch active skills (hides successfully swapped ones)
+    const { data: rawSkills } = await supabaseClient.from('skills').select('*').eq('is_active', true).order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
         carouselTrack.innerHTML = `<p style="text-align: center; color: #6b7280; width: 100%;">No skills posted yet. Be the first!</p>`;
@@ -157,7 +158,10 @@ window.deletePost = async function(event, postId) {
     event.stopPropagation(); await supabaseClient.from('skills').delete().eq('id', postId); loadSkills(); 
     if (document.getElementById('profile-page-name')) loadUserProfile();
 }
-window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
+window.reportPost = function(event, postId) { 
+    event.stopPropagation(); 
+    document.getElementById(`post-menu-${postId}`).style.display = 'none'; 
+}
 
 // --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
@@ -177,10 +181,36 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
+    // Fetch the Skill and User data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
     if (!skill) return;
     const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
     
+    // Check if the CURRENT user is allowed to make offers (are they busy?)
+    const { data: currentProfile } = await supabaseClient.from('profiles').select('is_available').eq('user_id', currentUserId).single();
+    const amIAvailable = currentProfile ? currentProfile.is_available : true;
+
+    // Check if an offer already exists for this specific post
+    const { data: existingOffer } = await supabaseClient.from('swap_requests')
+        .select('status')
+        .eq('requester_id', currentUserId)
+        .eq('skill_id', skillId)
+        .single();
+
+    // Determine what the action button should say
+    let actionBtnHtml = '';
+    if (skill.user_id == currentUserId) {
+        actionBtnHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-style: italic;">Your Post</span>`;
+    } else if (!amIAvailable) {
+        actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; opacity: 0.7; cursor: not-allowed; border: 1px solid #d1d5db;" disabled>Finish Current Swap First</button>`;
+    } else if (existingOffer && existingOffer.status === 'pending') {
+        actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; cursor: not-allowed;" disabled>Offer Pending</button>`;
+    } else {
+        // The big SWAP button
+        const safeTitle = skill.title.replace(/'/g, "\\'");
+        actionBtnHtml = `<button onclick="makeSwapOffer(${skill.user_id}, ${skill.id}, '${safeTitle}')" class="btn-primary" style="padding: 8px 24px; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">SWAP</button>`;
+    }
+
     let certHtml = '';
     if (skill.certificate_id) {
         const { data: cert } = await supabaseClient.from('certificates').select('*').eq('id', skill.certificate_id).single();
@@ -197,14 +227,6 @@ async function openSkillDetailModal(skillId) {
                 </div>`;
         }
     }
-
-    const connStatus = await checkConnectionStatus(currentUserId, skill.user_id);
-    let connectBtnHtml = '';
-    if(connStatus === 'self') connectBtnHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-style: italic;">Your Post</span>`;
-    else if(connStatus === 'accepted') connectBtnHtml = `<span style="font-size: 0.8rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 4px;"><i data-lucide="check" style="width: 16px; height: 16px;"></i> Connected</span>`;
-    else if(connStatus === 'pending_sent') connectBtnHtml = `<span style="font-size: 0.8rem; color: #6b7280; font-weight: 500; background: #f3f4f6; padding: 6px 12px; border-radius: 4px;">Requested</span>`;
-    else if(connStatus === 'pending_received') connectBtnHtml = `<button onclick="closeSkillDetailModal(); openRequestsModal();" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">Review Request</button>`;
-    else connectBtnHtml = `<button onclick="connectWithUserFromModal(${skill.user_id}, ${skill.id})" class="btn-outline" style="padding: 6px 12px; font-size: 0.8rem;">Connect</button>`;
 
     let wantedHtml = `<p style="font-size: 0.9rem; color: #6b7280; font-style: italic; margin: 0;">No specific skills listed.</p>`;
     if (user.profiles && user.profiles.length > 0 && user.profiles[0].wanted_skills) {
@@ -224,7 +246,7 @@ async function openSkillDetailModal(skillId) {
                     <p style="margin: 0; font-size: 0.85rem; color: #6b7280;">Skill Exchanger</p>
                 </div>
             </div>
-            <div>${connectBtnHtml}</div>
+            ${skill.user_id == currentUserId ? `<div>${actionBtnHtml}</div>` : ''}
         </div>
 
         <span style="font-size:0.75rem; font-weight: 600; color:#8b5cf6; background:#f5f3ff; padding:4px 10px; border-radius:6px;">${skill.category}</span>
@@ -238,10 +260,13 @@ async function openSkillDetailModal(skillId) {
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                 ${wantedHtml}
             </div>
-            <div style="margin-top: 25px; text-align: center;">
-                <p style="margin: 0; font-size: 0.9rem; color: #111827; font-weight: 500;">Can you teach them?</p>
-                <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: #6b7280;">Connect with ${user.username} to start exchanging!</p>
-            </div>
+            
+            ${skill.user_id != currentUserId ? `
+            <div style="margin-top: 30px; text-align: center; background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <p style="margin: 0 0 15px 0; font-size: 1rem; color: #111827; font-weight: 600;">Can you teach them?</p>
+                ${actionBtnHtml}
+                ${!amIAvailable ? `<p style="margin: 10px 0 0 0; font-size: 0.75rem; color: #ef4444;">You must finish your current active swap before making new offers.</p>` : ''}
+            </div>` : ''}
         </div>
     `;
     lucide.createIcons();
@@ -249,10 +274,33 @@ async function openSkillDetailModal(skillId) {
 
 function closeSkillDetailModal() { document.getElementById('skill-detail-modal').style.display = 'none'; }
 
-async function connectWithUserFromModal(receiverId, skillId) {
+async function makeSwapOffer(receiverId, skillId, skillTitle) {
     const currentUserId = localStorage.getItem('currentUserId');
-    await supabaseClient.from('connections').insert([{ requester_id: currentUserId, receiver_id: receiverId, status: 'pending' }]);
-    openSkillDetailModal(skillId); 
+    const currentUserName = localStorage.getItem('currentUser');
+
+    // 1. Log the offer in the database
+    const { error: offerError } = await supabaseClient.from('swap_requests').insert([{
+        requester_id: currentUserId,
+        receiver_id: receiverId,
+        skill_id: skillId,
+        status: 'pending'
+    }]);
+
+    if (offerError) {
+        showToast("Error sending offer. Try again.");
+        return;
+    }
+
+    // 2. Send a direct Notification to the Post Owner's Inbox
+    await supabaseClient.from('notifications').insert([{
+        user_id: receiverId,
+        type: 'new_offer',
+        message: `New Swap Offer! ${currentUserName} wants to swap for your skill: "${skillTitle}"`
+    }]);
+
+    // 3. Update the UI
+    showToast("Swap offer sent successfully!");
+    openSkillDetailModal(skillId); // Refresh modal to show "Offer Pending"
 }
 
 // --- POSTING A SKILL ---
@@ -286,6 +334,7 @@ async function openPostSkillModalForm() {
     document.getElementById('post-skill-desc').value = '';
 }
 function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
+
 async function submitPostSkill() {
     const userId = localStorage.getItem('currentUserId');
     const name = document.getElementById('post-skill-name').value.trim();
@@ -295,7 +344,7 @@ async function submitPostSkill() {
 
     if (!name || !tag || !desc) return; 
 
-    const payload = { user_id: userId, title: name, category: tag, description: desc };
+    const payload = { user_id: userId, title: name, category: tag, description: desc, is_active: true };
     if (certId && certId !== "") payload.certificate_id = parseInt(certId); 
 
     const { error: insertError } = await supabaseClient.from('skills').insert([payload]);
