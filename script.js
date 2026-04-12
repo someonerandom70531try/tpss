@@ -198,9 +198,16 @@ async function openSkillDetailModal(skillId) {
             ownerOffersHtml = `
             <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f3f4f6;">
                 <h4 style="margin: 0 0 15px 0; font-size: 1rem; color: #111827;">Pending Swap Offers (${pendingOffers.length})</h4>
+                ${!amIAvailable ? `<div style="background: #fee2e2; color: #ef4444; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 15px; border: 1px solid #fecaca;"><i data-lucide="alert-circle" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle;"></i> You must finish your current active swap before accepting new ones.</div>` : ''}
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     ${pendingOffers.map(offer => {
                         const requester = offer.app_users;
+                        
+                        // Disable the Accept button if the owner is currently busy
+                        const acceptBtnHtml = amIAvailable 
+                            ? `<button onclick="handleAcceptOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #10b981; background: #d1fae5; padding: 6px; border-radius: 6px;" title="Accept"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>`
+                            : `<button class="icon-btn" style="color: #9ca3af; background: #f3f4f6; padding: 6px; border-radius: 6px; cursor: not-allowed;" title="Finish current swap first"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>`;
+
                         return `
                         <div style="display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb;">
                             <div style="display: flex; align-items: center; gap: 10px; cursor:pointer;" onclick="window.location.href='view-profile.html?id=${offer.requester_id}'">
@@ -208,7 +215,7 @@ async function openSkillDetailModal(skillId) {
                                 <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${requester.username}</span>
                             </div>
                             <div style="display: flex; gap: 8px;">
-                                <button onclick="handleAcceptOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #10b981; background: #d1fae5; padding: 6px; border-radius: 6px;" title="Accept"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>
+                                ${acceptBtnHtml}
                                 <button onclick="handleRejectOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #ef4444; background: #fee2e2; padding: 6px; border-radius: 6px;" title="Reject"><i data-lucide="x" style="width: 16px; height: 16px;"></i></button>
                             </div>
                         </div>`;
@@ -372,16 +379,18 @@ function continueToPostSkill() { closeWarningModal(); openPostSkillModalForm(); 
 async function openPostSkillModalForm() {
     const currentUserId = localStorage.getItem('currentUserId');
     const certSelect = document.getElementById('post-skill-cert');
-    certSelect.innerHTML = '<option value="">Loading your certificates...</option>';
-    document.getElementById('post-skill-modal').style.display = 'flex';
+    if(certSelect) certSelect.innerHTML = '<option value="">Loading your certificates...</option>';
+    const modal = document.getElementById('post-skill-modal');
+    if(modal) modal.style.display = 'flex';
 
-    const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
-    certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
-    if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
-
-    document.getElementById('post-skill-name').value = '';
-    document.getElementById('post-skill-tag').value = '';
-    document.getElementById('post-skill-desc').value = '';
+    if(certSelect) {
+        const { data: certs } = await supabaseClient.from('certificates').select('id, title').eq('user_id', currentUserId);
+        certSelect.innerHTML = '<option value="">-- No certificate attached --</option>';
+        if (certs) certs.forEach(cert => { certSelect.innerHTML += `<option value="${cert.id}">${cert.title}</option>`; });
+    }
+    const name = document.getElementById('post-skill-name'); if(name) name.value = '';
+    const tag = document.getElementById('post-skill-tag'); if(tag) tag.value = '';
+    const desc = document.getElementById('post-skill-desc'); if(desc) desc.value = '';
 }
 function closePostSkillModal() { document.getElementById('post-skill-modal').style.display = 'none'; }
 
@@ -390,7 +399,7 @@ async function submitPostSkill() {
     const name = document.getElementById('post-skill-name').value.trim();
     const tag = document.getElementById('post-skill-tag').value.trim();
     const desc = document.getElementById('post-skill-desc').value.trim();
-    const certId = document.getElementById('post-skill-cert').value;
+    const certId = document.getElementById('post-skill-cert') ? document.getElementById('post-skill-cert').value : null;
 
     if (!name || !tag || !desc) return; 
 
@@ -410,153 +419,6 @@ async function submitPostSkill() {
     }
     closePostSkillModal();
     loadSkills(); 
-}
-
-// ==========================================
-// 3. AUTHENTICATION LOGIC
-// ==========================================
-let isLoginMode = true;
-
-window.signInWithGoogle = async function() {
-    const { data, error } = await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-            redirectTo: window.location.origin + window.location.pathname
-        }
-    });
-    if (error) showAuthMessage("Error connecting to Google.", true);
-}
-
-window.checkOAuthSession = async function() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (session && session.user) {
-        const btn = document.getElementById('auth-submit-btn');
-        if(btn) btn.innerText = "Connecting Google...";
-        
-        const email = session.user.email;
-        let name = session.user.user_metadata.full_name || session.user.user_metadata.name || email.split('@')[0];
-
-        const { data: existingUsers } = await supabaseClient.from('app_users').select('*').eq('email', email);
-
-        let localUser;
-        if (existingUsers && existingUsers.length > 0) {
-            localUser = existingUsers[0];
-        } else {
-            const uniqueUsername = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
-            const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ 
-                email: email, 
-                username: uniqueUsername, 
-                password: 'google_oauth_user_' + Date.now() 
-            }]).select().single();
-            
-            if(newUser) {
-                await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
-                localUser = newUser;
-            }
-        }
-
-        if (localUser) {
-            localStorage.setItem('currentUserId', localUser.id);
-            localStorage.setItem('currentUser', localUser.username);
-            window.location.href = "index.html";
-        }
-    }
-}
-
-function toggleAuthMode(event) {
-    if (event) event.preventDefault();
-    isLoginMode = !isLoginMode;
-    const authTitle = document.getElementById('auth-title'); const authSubtitle = document.getElementById('auth-subtitle');
-    const toggleText = document.getElementById('toggle-text'); const toggleLink = document.getElementById('toggle-link');
-    const msgBox = document.getElementById('auth-message'); const usernameContainer = document.getElementById('username-container');
-    const usernameInput = document.getElementById('auth-username'); const passwordHint = document.getElementById('password-hint');
-    const submitBtn = document.getElementById('auth-submit-btn');
-
-    if (msgBox) msgBox.style.display = 'none';
-    if (isLoginMode) {
-        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
-        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
-        usernameContainer.style.display = 'none'; usernameInput.removeAttribute('required');
-        passwordHint.style.display = 'none'; submitBtn.innerText = 'Sign In';
-    } else {
-        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
-        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
-        usernameContainer.style.display = 'block'; usernameInput.setAttribute('required', 'true');
-        passwordHint.style.display = 'block'; submitBtn.innerText = 'Create Account';
-    }
-}
-function showAuthMessage(message, isError = true) {
-    const msgBox = document.getElementById('auth-message'); if (!msgBox) return;
-    msgBox.innerText = message; msgBox.className = isError ? 'auth-message error' : 'auth-message success'; msgBox.style.display = 'block';
-}
-async function handleAuthSubmit(event) { event.preventDefault(); if (isLoginMode) await handleSignIn(); else await handleSignUp(); }
-
-async function handleSignUp() {
-    const email = document.getElementById('auth-email').value.trim(); const username = document.getElementById('auth-username').value.trim(); const password = document.getElementById('auth-password').value;
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
-    const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
-    if (existingUsers && existingUsers.length > 0) { showAuthMessage("That username or email is already taken."); return; }
-    const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
-    if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
-    if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id }]);
-    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
-}
-async function handleSignIn() {
-    const email = document.getElementById('auth-email').value.trim(); const password = document.getElementById('auth-password').value;
-    const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
-    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
-    localStorage.setItem('currentUserId', data[0].id); localStorage.setItem('currentUser', data[0].username); window.location.href = "index.html";
-}
-
-// ==========================================
-// 4. UI LOGIC & NAVBAR DROPDOWNS
-// ==========================================
-async function updateUIForUser() {
-    const loggedOutUI = document.getElementById('logged-out-ui'); const loggedInUI = document.getElementById('logged-in-ui');
-    const avatarBtn = document.getElementById('user-avatar-btn'); const avatarInitial = document.getElementById('avatar-initial');
-    const dropdownUsername = document.getElementById('dropdown-username'); const navAvatarImg = document.getElementById('nav-avatar-img');
-    if (!loggedOutUI || !loggedInUI) return;
-    const currentUser = localStorage.getItem('currentUser'); const currentUserId = localStorage.getItem('currentUserId');
-
-    if (currentUser) {
-        loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
-        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; if (dropdownUsername) dropdownUsername.innerText = currentUser;
-        if (currentUserId) {
-            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
-            if (profile && profile.avatar_url && navAvatarImg) {
-                if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
-                if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
-            } else {
-                if (navAvatarImg) navAvatarImg.style.display = 'none';
-                if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'block'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
-            }
-        }
-    } else { loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none'; }
-}
-
-function toggleDropdown(event) {
-    event.stopPropagation(); const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
-    if (connDropdown) connDropdown.classList.remove('show'); if (userDropdown) userDropdown.classList.toggle('show');
-}
-function toggleConnectionsDropdown(event) {
-    event.stopPropagation(); const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
-    if (userDropdown) userDropdown.classList.remove('show'); 
-    if (connDropdown) { connDropdown.classList.toggle('show'); if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') loadTopConnections(); }
-}
-window.onclick = function(event) {
-    const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown');
-    if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
-    if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown')) connDropdown.classList.remove('show');
-    document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
-}
-
-async function handleLogout() { 
-    localStorage.removeItem('currentUserId'); 
-    localStorage.removeItem('currentUser'); 
-    await supabaseClient.auth.signOut();
-    window.location.href = "index.html"; 
 }
 
 // ==========================================
@@ -683,15 +545,15 @@ async function openChatWithUser(userId, username, avatarUrl) {
 
     // NEW: Check if these two users share an ACTIVE swap, if so, show the "End Swap" button
     const currentUserId = localStorage.getItem('currentUserId');
-    const { data: activeSwap } = await supabaseClient.from('swap_requests')
+    const { data: activeSwaps } = await supabaseClient.from('swap_requests')
         .select('id')
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${userId}),and(requester_id.eq.${userId},receiver_id.eq.${currentUserId})`)
-        .single();
+        .limit(1);
 
     const endSwapBtn = document.getElementById('end-swap-btn');
     if (endSwapBtn) {
-        endSwapBtn.style.display = activeSwap ? 'flex' : 'none';
+        endSwapBtn.style.display = (activeSwaps && activeSwaps.length > 0) ? 'flex' : 'none';
     }
     
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
