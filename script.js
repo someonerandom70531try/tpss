@@ -606,6 +606,7 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
+        // Skip rendering silent system pings for whiteboard state
         if (!msg.content.startsWith('[WB_STATE]:')) {
             chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
         }
@@ -876,6 +877,7 @@ async function openManageConnectionsModal() {
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
 async function removeConnection(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput }); }
 
+
 // ==========================================
 // 7. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
@@ -1086,6 +1088,7 @@ function openAllCertsModal() {
     }
 }
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
+
 
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
@@ -1405,8 +1408,12 @@ function updateVideoLayout() {
         if (!allBoxes.includes(wbContainer)) allBoxes.push(wbContainer);
     } else {
         wbContainer.style.display = 'none';
-        if (wbContainer.parentElement) wbContainer.parentElement.removeChild(wbContainer);
+        // Safe removal from layout array, leaving it safely attached to HTML
         allBoxes = allBoxes.filter(b => b !== wbContainer);
+        const centerStage = document.getElementById('center-stage');
+        if (wbContainer.parentElement !== centerStage) {
+            centerStage.appendChild(wbContainer); 
+        }
     }
 
     const centerStage = document.getElementById('center-stage');
@@ -1420,7 +1427,7 @@ function updateVideoLayout() {
         sidebarZone.style.display = 'flex';
         defaultZone.style.display = 'none';
 
-        // VERY IMPORTANT: Only grab valid boxes, ignore structural nodes!
+        // Clean query to grab only layout items, ignoring internal wrapper divs
         let heroes = Array.from(centerStage.children).filter(child => 
             child.id === 'local-screen-preview' || 
             child.id === 'whiteboard-container' || 
@@ -1596,7 +1603,10 @@ async function joinCall() {
 
     rtc.client.on("user-unpublished", user => {
         const playerContainer = document.getElementById(`player-${user.uid}`);
-        if (playerContainer) playerContainer.remove();
+        if (playerContainer) {
+            playerContainer.style.display = 'none';
+            playerContainer.remove();
+        }
         updateVideoLayout();
     });
 
@@ -1837,7 +1847,10 @@ async function stopScreenShare() {
     isScreenSharing = false;
     
     const preview = document.getElementById('local-screen-preview');
-    if (preview) preview.remove();
+    if (preview) {
+        preview.style.display = 'none';
+        preview.remove();
+    }
     updateVideoLayout(); 
     
     const btn = document.getElementById('btn-screen');
