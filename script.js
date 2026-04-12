@@ -27,6 +27,127 @@ if ("Notification" in window && Notification.permission !== "granted" && Notific
 }
 
 // ==========================================
+// 1.5 AUTHENTICATION & UI LOGIC
+// ==========================================
+let isLoginMode = true;
+
+window.toggleAuthMode = function(event) {
+    if (event) event.preventDefault();
+    isLoginMode = !isLoginMode;
+    const authTitle = document.getElementById('auth-title'); 
+    const authSubtitle = document.getElementById('auth-subtitle');
+    const toggleText = document.getElementById('toggle-text'); 
+    const toggleLink = document.getElementById('toggle-link');
+    const msgBox = document.getElementById('auth-message'); 
+    const usernameContainer = document.getElementById('username-container');
+    const usernameInput = document.getElementById('auth-username'); 
+    const passwordHint = document.getElementById('password-hint');
+    const submitBtn = document.getElementById('auth-submit-btn');
+
+    if (msgBox) msgBox.style.display = 'none';
+    if (isLoginMode) {
+        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
+        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
+        if(usernameContainer) usernameContainer.style.display = 'none'; 
+        if(usernameInput) usernameInput.removeAttribute('required');
+        if(passwordHint) passwordHint.style.display = 'none'; 
+        submitBtn.innerText = 'Sign In';
+    } else {
+        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
+        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
+        if(usernameContainer) usernameContainer.style.display = 'block'; 
+        if(usernameInput) usernameInput.setAttribute('required', 'true');
+        if(passwordHint) passwordHint.style.display = 'block'; 
+        submitBtn.innerText = 'Create Account';
+    }
+}
+
+window.showAuthMessage = function(message, isError = true) {
+    const msgBox = document.getElementById('auth-message'); if (!msgBox) return;
+    msgBox.innerText = message; msgBox.className = isError ? 'auth-message error' : 'auth-message success'; msgBox.style.display = 'block';
+}
+
+window.handleAuthSubmit = async function(event) { 
+    event.preventDefault(); 
+    if (isLoginMode) await handleSignIn(); 
+    else await handleSignUp(); 
+}
+
+window.handleSignUp = async function() {
+    const email = document.getElementById('auth-email').value.trim(); 
+    const username = document.getElementById('auth-username').value.trim(); 
+    const password = document.getElementById('auth-password').value;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
+    
+    const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
+    if (existingUsers && existingUsers.length > 0) { showAuthMessage("That username or email is already taken."); return; }
+    
+    const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
+    if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
+    
+    if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true }]);
+    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
+}
+
+window.handleSignIn = async function() {
+    const email = document.getElementById('auth-email').value.trim(); 
+    const password = document.getElementById('auth-password').value;
+    const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
+    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
+    
+    localStorage.setItem('currentUserId', data[0].id); 
+    localStorage.setItem('currentUser', data[0].username); 
+    window.location.href = "index.html";
+}
+
+window.handleLogout = async function() { 
+    localStorage.removeItem('currentUserId'); 
+    localStorage.removeItem('currentUser'); 
+    window.location.href = "index.html"; 
+}
+
+window.updateUIForUser = async function() {
+    const loggedOutUI = document.getElementById('logged-out-ui'); const loggedInUI = document.getElementById('logged-in-ui');
+    const avatarBtn = document.getElementById('user-avatar-btn'); const avatarInitial = document.getElementById('avatar-initial');
+    const dropdownUsername = document.getElementById('dropdown-username'); const navAvatarImg = document.getElementById('nav-avatar-img');
+    if (!loggedOutUI || !loggedInUI) return;
+    
+    const currentUser = localStorage.getItem('currentUser'); const currentUserId = localStorage.getItem('currentUserId');
+
+    if (currentUser) {
+        loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
+        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; if (dropdownUsername) dropdownUsername.innerText = currentUser;
+        if (currentUserId) {
+            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
+            if (profile && profile.avatar_url && navAvatarImg) {
+                if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
+                if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
+            } else {
+                if (navAvatarImg) navAvatarImg.style.display = 'none';
+                if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'flex'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
+            }
+        }
+    } else { loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none'; }
+}
+
+window.toggleDropdown = function(event) {
+    event.stopPropagation(); 
+    const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown'); const inboxDropdown = document.getElementById('inbox-dropdown');
+    if (connDropdown) connDropdown.classList.remove('show'); 
+    if (inboxDropdown) inboxDropdown.classList.remove('show');
+    if (userDropdown) userDropdown.classList.toggle('show');
+}
+
+window.onclick = function(event) {
+    const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown'); const inboxDropdown = document.getElementById('inbox-dropdown');
+    if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
+    if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown') && !event.target.closest('button[title="My Network"]')) connDropdown.classList.remove('show');
+    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Inbox"]')) inboxDropdown.classList.remove('show');
+    document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
+}
+
+// ==========================================
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
 // ==========================================
 
