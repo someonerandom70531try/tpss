@@ -58,7 +58,6 @@ async function loadSkills() {
     if (!carouselTrack) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
-    // Only fetch active skills (hides successfully swapped ones)
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').eq('is_active', true).order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
@@ -112,20 +111,11 @@ async function loadSkills() {
 window.scrollCarousel = function(direction) {
     const track = document.getElementById('skills-carousel');
     if (!track) return;
-    
-    if (!isCarouselAnimating) {
-        carouselTargetScroll = track.scrollLeft;
-    }
-    
+    if (!isCarouselAnimating) carouselTargetScroll = track.scrollLeft;
     const scrollAmount = 320 * 2;
     const maxScroll = track.scrollWidth - track.clientWidth;
-    
-    if (direction === 'left') {
-        carouselTargetScroll -= scrollAmount;
-    } else {
-        carouselTargetScroll += scrollAmount;
-    }
-    
+    if (direction === 'left') carouselTargetScroll -= scrollAmount;
+    else carouselTargetScroll += scrollAmount;
     carouselTargetScroll = Math.max(0, Math.min(carouselTargetScroll, maxScroll));
     animateCarouselScroll(track);
 }
@@ -135,7 +125,6 @@ window.updateCarouselArrows = function() {
     const leftBtn = document.getElementById('scroll-left-btn');
     const rightBtn = document.getElementById('scroll-right-btn');
     if (!track || !leftBtn || !rightBtn) return;
-    
     const isScrollable = track.scrollWidth > track.clientWidth;
     if (isScrollable) {
         leftBtn.style.display = track.scrollLeft > 0 ? 'flex' : 'none';
@@ -158,10 +147,7 @@ window.deletePost = async function(event, postId) {
     event.stopPropagation(); await supabaseClient.from('skills').delete().eq('id', postId); loadSkills(); 
     if (document.getElementById('profile-page-name')) loadUserProfile();
 }
-window.reportPost = function(event, postId) { 
-    event.stopPropagation(); 
-    document.getElementById(`post-menu-${postId}`).style.display = 'none'; 
-}
+window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 // --- SKILL DEEP DIVE MODAL ---
 async function checkConnectionStatus(userA, userB) {
@@ -181,34 +167,72 @@ async function openSkillDetailModal(skillId) {
     content.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 30px;">Loading details...</p>`;
     document.getElementById('skill-detail-modal').style.display = 'flex';
 
-    // Fetch the Skill and User data
     const { data: skill } = await supabaseClient.from('skills').select('*').eq('id', skillId).single();
-    if (!skill) return;
-    const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
+    if (!skill) { closeSkillDetailModal(); return; }
     
-    // Check if the CURRENT user is allowed to make offers (are they busy?)
+    const { data: user } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url, wanted_skills)').eq('id', skill.user_id).single();
     const { data: currentProfile } = await supabaseClient.from('profiles').select('is_available').eq('user_id', currentUserId).single();
     const amIAvailable = currentProfile ? currentProfile.is_available : true;
 
-    // Check if an offer already exists for this specific post
+    // Check if an offer already exists from ME for this post
     const { data: existingOffer } = await supabaseClient.from('swap_requests')
         .select('status')
         .eq('requester_id', currentUserId)
         .eq('skill_id', skillId)
         .single();
 
-    // Determine what the action button should say
     let actionBtnHtml = '';
+    let ownerOffersHtml = '';
+
+    // Logic if I am the OWNER of the post
     if (skill.user_id == currentUserId) {
         actionBtnHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-style: italic;">Your Post</span>`;
-    } else if (!amIAvailable) {
-        actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; opacity: 0.7; cursor: not-allowed; border: 1px solid #d1d5db;" disabled>Finish Current Swap First</button>`;
-    } else if (existingOffer && existingOffer.status === 'pending') {
-        actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; cursor: not-allowed;" disabled>Offer Pending</button>`;
-    } else {
-        // The big SWAP button
-        const safeTitle = skill.title.replace(/'/g, "\\'");
-        actionBtnHtml = `<button onclick="makeSwapOffer(${skill.user_id}, ${skill.id}, '${safeTitle}')" class="btn-primary" style="padding: 8px 24px; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">SWAP</button>`;
+        
+        // Fetch everyone who has applied for my post
+        const { data: pendingOffers } = await supabaseClient.from('swap_requests')
+            .select('id, requester_id, app_users!swap_requests_requester_id_fkey(username, profiles(avatar_url))')
+            .eq('skill_id', skillId)
+            .eq('status', 'pending');
+
+        if (pendingOffers && pendingOffers.length > 0) {
+            ownerOffersHtml = `
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f3f4f6;">
+                <h4 style="margin: 0 0 15px 0; font-size: 1rem; color: #111827;">Pending Swap Offers (${pendingOffers.length})</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    ${pendingOffers.map(offer => {
+                        const requester = offer.app_users;
+                        return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                            <div style="display: flex; align-items: center; gap: 10px; cursor:pointer;" onclick="window.location.href='view-profile.html?id=${offer.requester_id}'">
+                                ${getAvatarHtml(requester, 32)}
+                                <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${requester.username}</span>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="handleAcceptOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #10b981; background: #d1fae5; padding: 6px; border-radius: 6px;" title="Accept"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>
+                                <button onclick="handleRejectOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #ef4444; background: #fee2e2; padding: 6px; border-radius: 6px;" title="Reject"><i data-lucide="x" style="width: 16px; height: 16px;"></i></button>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+        } else {
+            ownerOffersHtml = `
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f3f4f6; text-align: center;">
+                <p style="color: #6b7280; font-size: 0.9rem; margin: 0;">No swap offers yet. Stay tuned!</p>
+            </div>`;
+        }
+
+    } 
+    // Logic if I am the VIEWER
+    else {
+        if (!amIAvailable) {
+            actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; opacity: 0.7; cursor: not-allowed; border: 1px solid #d1d5db;" disabled>Finish Current Swap First</button>`;
+        } else if (existingOffer && existingOffer.status === 'pending') {
+            actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; cursor: not-allowed;" disabled>Offer Pending</button>`;
+        } else {
+            const safeTitle = skill.title.replace(/'/g, "\\'");
+            actionBtnHtml = `<button onclick="makeSwapOffer(${skill.user_id}, ${skill.id}, '${safeTitle}')" class="btn-primary" style="padding: 8px 24px; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">SWAP</button>`;
+        }
     }
 
     let certHtml = '';
@@ -267,6 +291,8 @@ async function openSkillDetailModal(skillId) {
                 ${actionBtnHtml}
                 ${!amIAvailable ? `<p style="margin: 10px 0 0 0; font-size: 0.75rem; color: #ef4444;">You must finish your current active swap before making new offers.</p>` : ''}
             </div>` : ''}
+            
+            ${ownerOffersHtml}
         </div>
     `;
     lucide.createIcons();
@@ -278,29 +304,53 @@ async function makeSwapOffer(receiverId, skillId, skillTitle) {
     const currentUserId = localStorage.getItem('currentUserId');
     const currentUserName = localStorage.getItem('currentUser');
 
-    // 1. Log the offer in the database
     const { error: offerError } = await supabaseClient.from('swap_requests').insert([{
-        requester_id: currentUserId,
-        receiver_id: receiverId,
-        skill_id: skillId,
-        status: 'pending'
+        requester_id: currentUserId, receiver_id: receiverId, skill_id: skillId, status: 'pending'
     }]);
 
-    if (offerError) {
-        showToast("Error sending offer. Try again.");
-        return;
-    }
+    if (offerError) { showToast("Error sending offer."); return; }
 
-    // 2. Send a direct Notification to the Post Owner's Inbox
     await supabaseClient.from('notifications').insert([{
-        user_id: receiverId,
-        type: 'new_offer',
-        message: `New Swap Offer! ${currentUserName} wants to swap for your skill: "${skillTitle}"`
+        user_id: receiverId, type: 'new_offer', message: `New Swap Offer! ${currentUserName} wants to swap for your skill: "${skillTitle}"`
     }]);
 
-    // 3. Update the UI
     showToast("Swap offer sent successfully!");
-    openSkillDetailModal(skillId); // Refresh modal to show "Offer Pending"
+    openSkillDetailModal(skillId); 
+}
+
+async function handleAcceptOffer(offerId, skillId) {
+    showToast("Processing swap...");
+    
+    // Trigger the custom RPC cascade function we built in Supabase
+    const { error } = await supabaseClient.rpc('accept_swap_offer', { target_offer_id: offerId });
+    
+    if (error) { 
+        console.error(error); 
+        showToast("Error accepting offer. It may have already been resolved."); 
+        return; 
+    }
+    
+    closeSkillDetailModal();
+    showToast("Swap Accepted! Check your messages.");
+    
+    loadSkills(); 
+    if (document.getElementById('profile-page-name')) loadUserProfile(); 
+}
+
+async function handleRejectOffer(offerId, skillId) {
+    // Manually reject the one specific user
+    await supabaseClient.from('swap_requests').update({ status: 'rejected' }).eq('id', offerId);
+    
+    // Get their info to send a rejection notice
+    const { data: req } = await supabaseClient.from('swap_requests').select('requester_id, skills(title)').eq('id', offerId).single();
+    if(req) {
+        await supabaseClient.from('notifications').insert([{
+            user_id: req.requester_id, type: 'rejected', message: `Your offer for "${req.skills.title}" was declined.`
+        }]);
+    }
+    
+    showToast("Offer rejected.");
+    openSkillDetailModal(skillId); 
 }
 
 // --- POSTING A SKILL ---
@@ -2158,5 +2208,102 @@ window.addEventListener('beforeunload', function (e) {
     if (isCallConnected || isWaitingForPickup) {
         e.preventDefault();
         e.returnValue = ''; 
+    }
+});
+
+
+// ==========================================
+// 16. INBOX & NOTIFICATIONS LOGIC
+// ==========================================
+function toggleInboxDropdown(event) {
+    event.stopPropagation(); 
+    const userDropdown = document.getElementById('user-dropdown'); 
+    const connDropdown = document.getElementById('connections-dropdown');
+    const inboxDropdown = document.getElementById('inbox-dropdown');
+    
+    if (userDropdown) userDropdown.classList.remove('show'); 
+    if (connDropdown) connDropdown.classList.remove('show'); 
+    
+    if (inboxDropdown) { 
+        inboxDropdown.classList.toggle('show'); 
+        if (inboxDropdown.classList.contains('show')) {
+            loadInboxNotifications(); 
+        }
+    }
+}
+
+async function loadInboxNotifications() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    const list = document.getElementById('inbox-list');
+    if(!list) return;
+    
+    list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280; margin: 0;">Loading...</p>`;
+    
+    const { data: notifications } = await supabaseClient.from('notifications')
+        .select('*')
+        .eq('user_id', currentUserId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+        
+    if (!notifications || notifications.length === 0) {
+        list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#9ca3af; margin: 0; padding: 20px 0;">No new notifications</p>`;
+        return;
+    }
+    
+    list.innerHTML = notifications.map(notif => {
+        let icon = 'bell';
+        let color = '#6b7280';
+        let bg = '#f3f4f6';
+        
+        if (notif.type === 'new_offer') { icon = 'inbox'; color = '#3b82f6'; bg = '#dbeafe'; }
+        if (notif.type === 'accepted') { icon = 'check-circle'; color = '#10b981'; bg = '#d1fae5'; }
+        if (notif.type === 'rejected') { icon = 'x-circle'; color = '#ef4444'; bg = '#fee2e2'; }
+        
+        const isUnread = !notif.is_read ? 'border-left: 3px solid #8b5cf6;' : 'border-left: 3px solid transparent;';
+        const date = new Date(notif.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
+        
+        return `
+        <div style="${isUnread} background: #f9fafb; padding: 12px; border-radius: 6px; display: flex; gap: 12px; align-items: flex-start;">
+            <div style="background: ${bg}; color: ${color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i data-lucide="${icon}" style="width: 16px; height: 16px;"></i>
+            </div>
+            <div>
+                <p style="margin: 0 0 4px 0; font-size: 0.85rem; color: #111827; line-height: 1.4;">${notif.message}</p>
+                <span style="font-size: 0.7rem; color: #9ca3af;">${date}</span>
+            </div>
+        </div>`;
+    }).join('');
+    
+    lucide.createIcons();
+}
+
+async function updateInboxBadge() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) return;
+
+    const { count } = await supabaseClient.from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
+
+    const badge = document.getElementById('inbox-badge');
+    if (badge) {
+        if (count > 0) { badge.innerText = count; badge.style.display = 'flex'; } 
+        else { badge.style.display = 'none'; }
+    }
+}
+
+async function markInboxRead() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('notifications').update({ is_read: true }).eq('user_id', currentUserId).eq('is_read', false);
+    updateInboxBadge();
+    loadInboxNotifications();
+}
+
+// Add click listener to close inbox when clicking outside
+window.addEventListener('click', function(event) {
+    const inboxDropdown = document.getElementById('inbox-dropdown');
+    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Inbox"]')) {
+        inboxDropdown.classList.remove('show');
     }
 });
