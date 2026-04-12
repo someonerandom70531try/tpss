@@ -3,13 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skill Swap | Learn Together</title>
+    <title>My Account | Skill Swap</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <style>
+        .cert-card-wrapper .cert-actions-overlay { opacity: 0; transition: opacity 0.2s ease-in-out; }
+        .cert-card-wrapper:hover .cert-actions-overlay { opacity: 1; }
+        .sortable-ghost { opacity: 0.4; background-color: #f9fafb !important; border: 2px dashed #8b5cf6 !important; }
+        .skill-tag:active, .modal-cert-item:active { cursor: grabbing !important; }
+    </style>
 </head>
-<body>
+<body style="background-color: #f3f2ef;"> 
+    
     <nav class="navbar">
         <div class="nav-container">
             <div class="logo">
@@ -21,6 +35,7 @@
                     <div id="logged-out-ui">
                         <a href="auth.html" class="btn-primary">Sign In</a>
                     </div>
+                    
                     <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
                         
                         <div style="position: relative;">
@@ -50,8 +65,11 @@
                             </button>
                             <div id="connections-dropdown" class="dropdown-menu" style="width: 320px; right: -10px; top: 45px; padding: 15px; cursor: default;">
                                 <input type="text" id="connection-search" placeholder="Search users by name..." class="modal-input" style="margin-top: 0; padding: 8px 12px; font-size: 0.9rem;" oninput="searchUsers(event)">
+                                
                                 <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">
-                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">My Connections</button>
+                                    <button onclick="openManageConnectionsModal()" style="background: none; border: none; color: #4b5563; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
+                                        My Connections
+                                    </button>
                                     <button onclick="openRequestsModal()" style="background: none; border: none; color: #8b5cf6; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 0;">
                                         Requests <span id="requests-badge" style="display: none; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px;">0</span>
                                     </button>
@@ -71,100 +89,154 @@
                                     <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
                                 </div>
                                 <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
-                                <a href="account.html" class="dropdown-item"><i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account</a>
-                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout</button>
+                                <a href="account.html" class="dropdown-item">
+                                    <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
+                                </a>
+                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
+                                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
+                                </button>
                             </div>
                         </div>
+
                     </div>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="container">
-        <section style="text-align: center; margin: 60px 0; max-width: 800px; margin-left: auto; margin-right: auto;">
-            <h1 style="font-size: 3rem; color: #111827; margin-bottom: 20px; line-height: 1.2;">Swap Skills. <span style="color: #8b5cf6;">Grow Together.</span></h1>
-            <p style="font-size: 1.2rem; color: #4b5563; margin-bottom: 30px;">Trade what you know for what you want to learn. No money involved, just pure knowledge exchange.</p>
-            <div style="display: flex; gap: 15px; justify-content: center;">
-                <button onclick="checkWantedSkillsBeforePosting()" class="btn-primary" style="font-size: 1.1rem; padding: 12px 30px; border-radius: 30px;">Post a Skill</button>
+    <main class="profile-container">
+        
+        <div class="profile-card" style="padding: 0;">
+            <div class="profile-banner edit-hover-group" onclick="openImageEditor('banner_url')">
+                <img id="profile-banner-img" src="" alt="Banner Background" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                <div class="edit-overlay"><i data-lucide="camera" style="width: 30px; height: 30px;"></i></div>
             </div>
-        </section>
+            <div class="profile-info-section">
+                <div class="profile-avatar-wrapper edit-hover-group" onclick="openImageEditor('avatar_url')">
+                    <div class="profile-avatar-large" id="profile-page-initial"></div>
+                    <img id="profile-avatar-img" style="display: none; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" src="" alt="Avatar">
+                    <div class="edit-overlay circle"><i data-lucide="camera" style="width: 24px; height: 24px;"></i></div>
+                </div>
+                <div class="profile-text">
+                    <div class="flex-row-between">
+                        <h1 id="profile-page-name"></h1>
+                        <button class="icon-btn" onclick="editProfileField('username', 'Enter your new username:')">
+                            <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
+                        </button>
+                    </div>
+                    <div class="flex-row-between" style="justify-content: flex-start; gap: 10px;">
+                        <p class="profile-headline" id="profile-headline" style="min-height: 24px; margin: 5px 0; color: #1f2937;"></p>
+                        <button class="icon-btn" style="padding: 4px;" onclick="editProfileField('headline', 'Enter your headline (e.g., Senior Developer):')">
+                            <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                        </button>
+                    </div>
+                    <div class="flex-row-between" style="justify-content: flex-start; gap: 10px;">
+                        <p class="profile-location" id="profile-location" style="min-height: 20px; margin: 0; color: #6b7280; font-size: 0.9rem;"></p>
+                        <button class="icon-btn" style="padding: 4px;" onclick="editProfileField('location', 'Enter your city and state:')">
+                            <i data-lucide="pencil" style="width: 14px; height: 14px;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <section style="margin-top: 60px; margin-bottom: 60px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
-                <div>
-                    <h2 style="font-size: 1.8rem; color: #111827; margin: 0 0 5px 0;">Explore Skills</h2>
-                    <p style="color: #6b7280; margin: 0;">Find your next learning partner.</p>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="scroll-left-btn" onclick="scrollCarousel('left')" class="icon-btn" style="background: white; border: 1px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: none;"><i data-lucide="chevron-left" style="width: 24px; height: 24px;"></i></button>
-                    <button id="scroll-right-btn" onclick="scrollCarousel('right')" class="icon-btn" style="background: white; border: 1px solid #e5e7eb; box-shadow: 0 2px 4px rgba(0,0,0,0.05);"><i data-lucide="chevron-right" style="width: 24px; height: 24px;"></i></button>
-                </div>
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 10px;">
+                <h2 style="margin: 0;">About</h2>
+                <button class="icon-btn" onclick="editProfileField('bio', 'Write a bit about yourself:')">
+                    <i data-lucide="pencil" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
+            <p id="profile-bio" style="color: #4b5563; line-height: 1.6; white-space: pre-wrap; min-height: 24px; margin: 0;"></p>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Skills I Have</h2>
+                <button class="icon-btn" onclick="addSingleSkill()">
+                    <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="profile-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;"></div>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Skills I Want</h2>
+                <button class="icon-btn" onclick="addWantedSkill()">
+                    <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            <div id="profile-wanted-skills-container" class="skills-list" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 34px;"></div>
+        </div>
+
+        <div class="profile-card">
+            <div class="flex-row-between" style="margin-bottom: 15px;">
+                <h2 style="margin: 0;">Certificates</h2>
+                <button class="icon-btn" onclick="document.getElementById('cert-upload').click()">
+                    <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+                </button>
+                <input type="file" id="cert-upload" accept="application/pdf" style="display:none;" onchange="uploadCertificate(event)">
             </div>
             
-            <div id="skills-carousel-container" style="position: relative; margin: 0 -20px; padding: 0 20px;">
-                <div id="skills-carousel" style="display: flex; gap: 20px; overflow-x: hidden; padding-bottom: 20px; scroll-behavior: smooth;">
-                    </div>
+            <div id="profile-certificates-container" style="display: flex; flex-direction: column; gap: 15px; min-height: 34px;">
+                <p id="cert-placeholder" style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">Add your certifications and licenses...</p>
             </div>
-        </section>
+
+            <div id="cert-actions" style="display: none; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; gap: 10px; justify-content: center;">
+                <button id="cert-show-more-btn" class="btn-secondary" onclick="showMoreCertificates()" style="padding: 8px 16px; font-size: 0.9rem; background: white; border-radius: 6px; cursor: pointer; font-weight: 500; border: 1px solid #d1d5db;">Show more</button>
+                <button id="cert-show-all-btn" class="btn-primary" onclick="openAllCertsModal()" style="padding: 8px 16px; font-size: 0.9rem;">Show all</button>
+            </div>
+        </div>
     </main>
 
-    <div id="skill-detail-modal" class="modal-overlay">
-        <div class="modal-content" style="max-width: 600px; width: 90%;">
-            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
-                <h3 style="margin: 0; color: #111827;">Skill Details</h3>
-                <button onclick="closeSkillDetailModal()" class="icon-btn" style="color: #6b7280;">
+    <div id="custom-edit-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title">Edit Field</h3>
+            <textarea id="modal-input" class="modal-input" rows="3" placeholder="Type here..."></textarea>
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" onclick="closeModal()" class="btn-secondary" style="padding: 8px 16px; background: white; border-radius: 6px; cursor: pointer; border: 1px solid #d1d5db;">Cancel</button>
+                <button id="modal-save-btn" class="btn-primary" style="padding: 8px 16px;">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="image-editor-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 id="image-modal-title">Update Image</h3>
+            <div id="image-source-options" style="text-align: center; margin: 20px 0;">
+                <button onclick="document.getElementById('file-upload').click()" class="btn-primary" style="width: 100%; margin-bottom: 10px;">
+                    <i data-lucide="upload" style="display: inline; width: 16px; height: 16px; margin-right: 5px;"></i> Upload from Device
+                </button>
+                <input type="file" id="file-upload" accept="image/*" style="display:none;" onchange="loadFileIntoCropper(event)">
+                <p style="color: #6b7280; font-size: 0.9rem; margin: 15px 0;">— OR —</p>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="link-upload-input" class="modal-input" style="margin: 0;" placeholder="Paste image link here...">
+                    <button onclick="loadLinkIntoCropper()" class="btn-secondary" style="padding: 0 15px; border-radius: 6px; background: white; cursor: pointer; border: 1px solid #d1d5db;">Load</button>
+                </div>
+            </div>
+            <div id="cropper-container" style="display:none; margin-top: 15px;">
+                <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 10px;">Drag to reposition or scroll to zoom.</p>
+                <div style="max-height: 300px; width: 100%; overflow: hidden; background: #f3f4f6; border-radius: 8px;">
+                    <img id="image-to-crop" src="" style="max-width: 100%; display: block;">
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button onclick="closeImageEditor()" class="btn-secondary" style="padding: 8px 16px; background: white; border-radius: 6px; cursor: pointer; border: 1px solid #d1d5db;">Cancel</button>
+                <button id="save-cropped-btn" onclick="saveCroppedImage()" class="btn-primary" style="display:none; padding: 8px 16px;">Save Image</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="all-certs-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px; max-height: 85vh; overflow-y: auto; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #111827;">Certificate Gallery</h3>
+                <button onclick="closeAllCertsModal()" class="icon-btn" style="color: #6b7280;">
                     <i data-lucide="x" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
-            <div id="skill-detail-content"></div>
-        </div>
-    </div>
-
-    <div id="warning-modal" class="modal-overlay">
-        <div class="modal-content" style="max-width: 450px; text-align: center;">
-            <div style="display: flex; justify-content: center; margin-bottom: 15px;">
-                <i data-lucide="alert-triangle" style="width: 48px; height: 48px; color: #f59e0b;"></i>
-            </div>
-            <h3 style="margin: 0 0 10px 0; color: #111827;">Profile Incomplete</h3>
-            <p style="color: #4b5563; font-size: 0.95rem; margin-bottom: 20px;">It's highly recommended to add "Skills I want to learn" to your profile before posting, so others know what you want to swap for!</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button onclick="window.location.href='account.html'" class="btn-primary" style="padding: 8px 16px;">Update Profile</button>
-                <button onclick="continueToPostSkill()" class="btn-secondary" style="padding: 8px 16px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer;">Post Anyway</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="post-skill-modal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin-top: 0;">Share a Skill</h3>
-            
-            <label class="modal-label">What can you teach?</label>
-            <input type="text" id="post-skill-name" class="modal-input" placeholder="e.g., React JS Basics">
-            
-            <label class="modal-label">Category</label>
-            <select id="post-skill-tag" class="modal-input">
-                <option value="Tech">Tech</option>
-                <option value="Design">Design</option>
-                <option value="Language">Language</option>
-                <option value="Business">Business</option>
-                <option value="Music">Music</option>
-                <option value="Art">Art</option>
-                <option value="Other">Other</option>
-            </select>
-            
-            <label class="modal-label">Description (What will they learn?)</label>
-            <textarea id="post-skill-desc" class="modal-input" rows="4" placeholder="Describe the topics you'll cover and your experience level..."></textarea>
-            
-            <label class="modal-label">Attach a Certificate (Optional)</label>
-            <select id="post-skill-cert" class="modal-input">
-                <option value="">-- No certificate attached --</option>
-            </select>
-
-            <div class="modal-actions">
-                <button onclick="closePostSkillModal()" class="btn-secondary" style="background: white; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancel</button>
-                <button onclick="submitPostSkill()" class="btn-primary" style="padding: 8px 16px;">Post Skill</button>
-            </div>
+            <div id="light-cert-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;"></div>
         </div>
     </div>
 
@@ -193,12 +265,6 @@
     </div>
 
     <script src="script.js"></script>
-    <script>
-        lucide.createIcons();
-        document.addEventListener('DOMContentLoaded', () => {
-            const track = document.getElementById('skills-carousel');
-            if (track) { track.addEventListener('scroll', updateCarouselArrows); }
-        });
-    </script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
