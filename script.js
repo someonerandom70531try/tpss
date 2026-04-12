@@ -637,6 +637,10 @@ async function loadChatConnections() {
                     lastMsgText = prefix + "📞 Missed Call";
                 } else if (lastMsg.content.startsWith('[WB_STATE]:')) {
                     lastMsgText = prefix + "Started a Whiteboard";
+                } else if (lastMsg.content === '[SWAP_END_REQUEST]') {
+                    lastMsgText = prefix + "Sent a completion request";
+                } else if (lastMsg.content === '[SWAP_ENDED]') {
+                    lastMsgText = "✅ Swap officially completed!";
                 } else {
                     lastMsgText = prefix + lastMsg.content;
                 }
@@ -676,8 +680,20 @@ async function openChatWithUser(userId, username, avatarUrl) {
     
     const videoBtn = document.getElementById('video-call-btn');
     if (videoBtn) videoBtn.style.display = 'flex';
-    
+
+    // NEW: Check if these two users share an ACTIVE swap, if so, show the "End Swap" button
     const currentUserId = localStorage.getItem('currentUserId');
+    const { data: activeSwap } = await supabaseClient.from('swap_requests')
+        .select('id')
+        .eq('status', 'accepted')
+        .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${userId}),and(requester_id.eq.${userId},receiver_id.eq.${currentUserId})`)
+        .single();
+
+    const endSwapBtn = document.getElementById('end-swap-btn');
+    if (endSwapBtn) {
+        endSwapBtn.style.display = activeSwap ? 'flex' : 'none';
+    }
+    
     await supabaseClient.from('messages').update({ is_read: true }).eq('sender_id', userId).eq('receiver_id', currentUserId).eq('is_read', false);
     
     loadChatConnections();
@@ -705,7 +721,6 @@ async function loadChatMessages(otherUserId) {
     }
     
     messages.forEach(msg => {
-        // Skip rendering silent system pings for whiteboard state
         if (!msg.content.startsWith('[WB_STATE]:')) {
             chatArea.innerHTML += createMessageHtml(msg, msg.sender_id == currentUserId);
         }
@@ -765,6 +780,36 @@ function createMessageHtml(msg, isSender) {
         maxW = '85%';
         rightClickEvent = ''; 
     }
+    // NEW: Handle the Swap End Request logic
+    else if (msg.content === '[SWAP_END_REQUEST]') {
+        if (isSender) {
+            contentHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:8px; font-weight: 500; color: #4b5563; text-align:center;">
+                            <span>You requested to end this swap. Waiting for confirmation.</span>
+                           </div>`;
+            bg = 'background: #f3f4f6; border: 1px solid #e5e7eb;';
+        } else {
+            contentHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:8px; font-weight: 500; color: #111827; text-align:center;">
+                            <span style="margin-bottom: 5px;">The other user wants to mark this swap as complete. Do you agree?</span>
+                            <button onclick="confirmEndSwap(${msg.id}, ${msg.sender_id})" style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight:600;">Confirm & End Swap</button>
+                           </div>`;
+            bg = 'background: #ffffff; border: 2px solid #10b981;';
+        }
+        align = 'align-self: center;';
+        maxW = '85%';
+        metaHtml = '';
+        rightClickEvent = '';
+    }
+    // NEW: Handle the Success message when the swap is completed
+    else if (msg.content === '[SWAP_ENDED]') {
+        contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 600; color: #059669;">
+                        <i data-lucide="party-popper" style="width:18px; height:18px;"></i> Swap Officially Completed! You are both free to make new offers.
+                       </div>`;
+        bg = 'background: #dcfce7; border: 1px solid #6ee7b7;';
+        align = 'align-self: center;';
+        maxW = '85%';
+        metaHtml = '';
+        rightClickEvent = ''; 
+    }
     else {
         contentHtml = msg.content;
         const editedMark = msg.is_edited ? 'Edited ' : '';
@@ -804,6 +849,48 @@ async function sendChatMessage() {
     }
 
     loadChatMessages(currentChatUserId);
+    loadChatConnections();
+}
+
+// NEW: Request End Swap action
+async function requestEndSwap() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if(!currentUserId || !currentChatUserId) return;
+    
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: currentChatUserId, content: '[SWAP_END_REQUEST]'
+    }]);
+    
+    document.getElementById('end-swap-btn').style.display = 'none'; // Hide locally so they don't spam it
+    loadChatMessages(currentChatUserId);
+    loadChatConnections();
+}
+
+// NEW: Confirm End Swap action (Triggered by the partner)
+async function confirmEndSwap(msgId, partnerId) {
+    const currentUserId = localStorage.getItem('currentUserId');
+    
+    // 1. Update the database to mark swap as 'completed'
+    await supabaseClient.from('swap_requests')
+        .update({ status: 'completed' })
+        .eq('status', 'accepted')
+        .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
+        
+    // 2. Free up BOTH users' availability
+    await supabaseClient.from('profiles')
+        .update({ is_available: true })
+        .in('user_id', [currentUserId, partnerId]);
+
+    // 3. Mark the "Request" message as deleted so the button vanishes
+    await supabaseClient.from('messages').update({ is_deleted: true }).eq('id', msgId);
+    
+    // 4. Send the global "Swap Completed" banner message
+    await supabaseClient.from('messages').insert([{
+        sender_id: currentUserId, receiver_id: partnerId, content: '[SWAP_ENDED]'
+    }]);
+    
+    document.getElementById('end-swap-btn').style.display = 'none';
+    loadChatMessages(partnerId);
     loadChatConnections();
 }
 
