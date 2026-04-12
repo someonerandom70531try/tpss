@@ -117,9 +117,15 @@
                     </div>
                 </div>
                 
-                <button id="video-call-btn" onclick="startVideoCall()" class="icon-btn" style="display: none; background: #e0e7ff; color: #4f46e5; padding: 8px 15px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; align-items: center; gap: 8px; border: 1px solid #c7d2fe;">
-                    <i data-lucide="video" style="width: 18px; height: 18px;"></i> Video Call
-                </button>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button id="end-swap-btn" onclick="requestEndSwap()" class="icon-btn" style="display: none; background: #fee2e2; color: #ef4444; padding: 8px 15px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; align-items: center; gap: 8px; border: 1px solid #fecaca;">
+                        <i data-lucide="check-circle" style="width: 18px; height: 18px;"></i> End Swap
+                    </button>
+
+                    <button id="video-call-btn" onclick="startVideoCall()" class="icon-btn" style="display: none; background: #e0e7ff; color: #4f46e5; padding: 8px 15px; border-radius: 6px; font-weight: 500; font-size: 0.9rem; align-items: center; gap: 8px; border: 1px solid #c7d2fe;">
+                        <i data-lucide="video" style="width: 18px; height: 18px;"></i> Video Call
+                    </button>
+                </div>
             </div>
             
             <div id="chat-messages-area" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
