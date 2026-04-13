@@ -2596,4 +2596,4 @@ window.addEventListener('click', function(event) {
         inboxDropdown.classList.remove('show');
     }
 });
-});
+
