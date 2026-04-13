@@ -30,7 +30,6 @@ if ("Notification" in window && Notification.permission !== "granted" && Notific
 // 1.5 AUTHENTICATION & UI LOGIC
 // ==========================================
 
-// Restored to match your existing auth.html perfectly
 window.handleAuth = async function(e) {
     e.preventDefault();
     const formTitle = document.getElementById('form-title');
@@ -49,20 +48,29 @@ window.handleAuth = async function(e) {
     if (isLogin) {
         const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password).single();
         if (error || !data) { 
-            if(errorMsg) errorMsg.innerText = "Invalid credentials"; 
+            if(errorMsg) {
+                errorMsg.innerText = "Invalid credentials"; 
+                errorMsg.style.display = 'block';
+            }
             return; 
         }
         loginUser(data);
     } else {
         const { data: existing, error: existError } = await supabaseClient.from('app_users').select('id').eq('email', email);
         if (existing && existing.length > 0) { 
-            if(errorMsg) errorMsg.innerText = "Email already in use"; 
+            if(errorMsg) {
+                errorMsg.innerText = "Email already in use"; 
+                errorMsg.style.display = 'block';
+            }
             return; 
         }
         
         const { data: newUser, error } = await supabaseClient.from('app_users').insert([{ email, password, username }]).select().single();
         if (error) { 
-            if(errorMsg) errorMsg.innerText = "Error creating account"; 
+            if(errorMsg) {
+                errorMsg.innerText = "Error creating account"; 
+                errorMsg.style.display = 'block';
+            }
             return; 
         }
         
