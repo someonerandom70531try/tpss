@@ -29,76 +29,52 @@ if ("Notification" in window && Notification.permission !== "granted" && Notific
 // ==========================================
 // 1.5 AUTHENTICATION & UI LOGIC
 // ==========================================
-let isLoginMode = true;
 
-window.toggleAuthMode = function(event) {
-    if (event) event.preventDefault();
-    isLoginMode = !isLoginMode;
-    const authTitle = document.getElementById('auth-title'); 
-    const authSubtitle = document.getElementById('auth-subtitle');
-    const toggleText = document.getElementById('toggle-text'); 
-    const toggleLink = document.getElementById('toggle-link');
-    const msgBox = document.getElementById('auth-message'); 
-    const usernameContainer = document.getElementById('username-container');
-    const usernameInput = document.getElementById('auth-username'); 
-    const passwordHint = document.getElementById('password-hint');
-    const submitBtn = document.getElementById('auth-submit-btn');
+// Restored to match your existing auth.html perfectly
+window.handleAuth = async function(e) {
+    e.preventDefault();
+    const formTitle = document.getElementById('form-title');
+    if (!formTitle) return; 
+    
+    const isLogin = formTitle.innerText === 'Welcome Back';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const errorMsg = document.getElementById('auth-error');
+    
+    let username = "";
+    if (!isLogin) {
+        username = document.getElementById('username').value.trim();
+    }
 
-    if (msgBox) msgBox.style.display = 'none';
-    if (isLoginMode) {
-        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
-        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
-        if(usernameContainer) usernameContainer.style.display = 'none'; 
-        if(usernameInput) usernameInput.removeAttribute('required');
-        if(passwordHint) passwordHint.style.display = 'none'; 
-        submitBtn.innerText = 'Sign In';
+    if (isLogin) {
+        const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password).single();
+        if (error || !data) { 
+            if(errorMsg) errorMsg.innerText = "Invalid credentials"; 
+            return; 
+        }
+        loginUser(data);
     } else {
-        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
-        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
-        if(usernameContainer) usernameContainer.style.display = 'block'; 
-        if(usernameInput) usernameInput.setAttribute('required', 'true');
-        if(passwordHint) passwordHint.style.display = 'block'; 
-        submitBtn.innerText = 'Create Account';
+        const { data: existing, error: existError } = await supabaseClient.from('app_users').select('id').eq('email', email);
+        if (existing && existing.length > 0) { 
+            if(errorMsg) errorMsg.innerText = "Email already in use"; 
+            return; 
+        }
+        
+        const { data: newUser, error } = await supabaseClient.from('app_users').insert([{ email, password, username }]).select().single();
+        if (error) { 
+            if(errorMsg) errorMsg.innerText = "Error creating account"; 
+            return; 
+        }
+        
+        await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true }]);
+        loginUser(newUser);
     }
 }
 
-window.showAuthMessage = function(message, isError = true) {
-    const msgBox = document.getElementById('auth-message'); if (!msgBox) return;
-    msgBox.innerText = message; msgBox.className = isError ? 'auth-message error' : 'auth-message success'; msgBox.style.display = 'block';
-}
-
-window.handleAuthSubmit = async function(event) { 
-    event.preventDefault(); 
-    if (isLoginMode) await handleSignIn(); 
-    else await handleSignUp(); 
-}
-
-window.handleSignUp = async function() {
-    const email = document.getElementById('auth-email').value.trim(); 
-    const username = document.getElementById('auth-username').value.trim(); 
-    const password = document.getElementById('auth-password').value;
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
-    
-    const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
-    if (existingUsers && existingUsers.length > 0) { showAuthMessage("That username or email is already taken."); return; }
-    
-    const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
-    if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
-    
-    if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true }]);
-    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
-}
-
-window.handleSignIn = async function() {
-    const email = document.getElementById('auth-email').value.trim(); 
-    const password = document.getElementById('auth-password').value;
-    const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
-    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
-    
-    localStorage.setItem('currentUserId', data[0].id); 
-    localStorage.setItem('currentUser', data[0].username); 
-    window.location.href = "index.html";
+window.loginUser = function(user) {
+    localStorage.setItem('currentUser', user.username);
+    localStorage.setItem('currentUserId', user.id);
+    window.location.href = 'index.html';
 }
 
 window.handleLogout = async function() { 
@@ -150,7 +126,7 @@ window.toggleConnectionsDropdown = function(event) {
     
     if (connDropdown) { 
         connDropdown.classList.toggle('show'); 
-        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search') && document.getElementById('connection-search').value === '') {
             if (typeof loadTopConnections === 'function') loadTopConnections();
         }
     }
@@ -160,7 +136,7 @@ window.onclick = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); const connDropdown = document.getElementById('connections-dropdown'); const inboxDropdown = document.getElementById('inbox-dropdown');
     if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
     if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown') && !event.target.closest('button[title="My Network"]')) connDropdown.classList.remove('show');
-    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Inbox"]')) inboxDropdown.classList.remove('show');
+    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Notifications"]')) inboxDropdown.classList.remove('show');
     document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
 }
 
