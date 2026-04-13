@@ -139,7 +139,6 @@ window.toggleDropdown = function(event) {
     if (userDropdown) userDropdown.classList.toggle('show');
 }
 
-// THIS IS THE FIXED FUNCTION
 window.toggleConnectionsDropdown = function(event) {
     event.stopPropagation(); 
     const userDropdown = document.getElementById('user-dropdown'); 
@@ -467,7 +466,6 @@ async function makeSwapOffer(receiverId, skillId, skillTitle) {
 async function handleAcceptOffer(offerId, skillId) {
     showToast("Processing swap...");
     
-    // Trigger the custom RPC cascade function we built in Supabase
     const { error } = await supabaseClient.rpc('accept_swap_offer', { target_offer_id: offerId });
     
     if (error) { 
@@ -484,10 +482,8 @@ async function handleAcceptOffer(offerId, skillId) {
 }
 
 async function handleRejectOffer(offerId, skillId) {
-    // Manually reject the one specific user
     await supabaseClient.from('swap_requests').update({ status: 'rejected' }).eq('id', offerId);
     
-    // Get their info to send a rejection notice
     const { data: req } = await supabaseClient.from('swap_requests').select('requester_id, skills(title)').eq('id', offerId).single();
     if(req) {
         await supabaseClient.from('notifications').insert([{
@@ -682,7 +678,6 @@ async function openChatWithUser(userId, username, avatarUrl) {
     const videoBtn = document.getElementById('video-call-btn');
     if (videoBtn) videoBtn.style.display = 'flex';
 
-    // NEW: Check if these two users share an ACTIVE swap, if so, show the "End Swap" button
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: activeSwaps } = await supabaseClient.from('swap_requests')
         .select('id')
@@ -781,7 +776,6 @@ function createMessageHtml(msg, isSender) {
         maxW = '85%';
         rightClickEvent = ''; 
     }
-    // NEW: Handle the Swap End Request logic
     else if (msg.content === '[SWAP_END_REQUEST]') {
         if (isSender) {
             contentHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:8px; font-weight: 500; color: #4b5563; text-align:center;">
@@ -800,7 +794,6 @@ function createMessageHtml(msg, isSender) {
         metaHtml = '';
         rightClickEvent = '';
     }
-    // NEW: Handle the Success message when the swap is completed
     else if (msg.content === '[SWAP_ENDED]') {
         contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 600; color: #059669;">
                         <i data-lucide="party-popper" style="width:18px; height:18px;"></i> Swap Officially Completed! You are both free to make new offers.
@@ -853,7 +846,6 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
-// NEW: Request End Swap action
 async function requestEndSwap() {
     const currentUserId = localStorage.getItem('currentUserId');
     if(!currentUserId || !currentChatUserId) return;
@@ -862,35 +854,53 @@ async function requestEndSwap() {
         sender_id: currentUserId, receiver_id: currentChatUserId, content: '[SWAP_END_REQUEST]'
     }]);
     
-    document.getElementById('end-swap-btn').style.display = 'none'; // Hide locally so they don't spam it
+    document.getElementById('end-swap-btn').style.display = 'none';
     loadChatMessages(currentChatUserId);
     loadChatConnections();
 }
 
-// NEW: Confirm End Swap action (Triggered by the partner)
 async function confirmEndSwap(msgId, partnerId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
-    // 1. Update the database to mark swap as 'completed'
+    const { data: swapArray } = await supabaseClient.from('swap_requests')
+        .select('skill_id, skills(title, user_id)')
+        .eq('status', 'accepted')
+        .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
+
+    if (swapArray && swapArray.length > 0) {
+        const swapData = swapArray[0];
+        if (swapData.skills) {
+            const skillTitle = swapData.skills.title;
+            const ownerId = swapData.skills.user_id;
+
+            const { data: ownerProfile } = await supabaseClient.from('profiles').select('trophy_skills').eq('user_id', ownerId).single();
+            let trophies = ownerProfile && ownerProfile.trophy_skills ? ownerProfile.trophy_skills.split(',').map(s => s.trim()) : [];
+
+            if (!trophies.includes(skillTitle)) {
+                trophies.push(skillTitle);
+                await supabaseClient.from('profiles').update({ trophy_skills: trophies.join(', ') }).eq('user_id', ownerId);
+            }
+        }
+    }
+
     await supabaseClient.from('swap_requests')
         .update({ status: 'completed' })
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
         
-    // 2. Free up BOTH users' availability
     await supabaseClient.from('profiles')
         .update({ is_available: true })
         .in('user_id', [currentUserId, partnerId]);
 
-    // 3. Mark the "Request" message as deleted so the button vanishes
     await supabaseClient.from('messages').update({ is_deleted: true }).eq('id', msgId);
     
-    // 4. Send the global "Swap Completed" banner message
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: partnerId, content: '[SWAP_ENDED]'
     }]);
     
-    document.getElementById('end-swap-btn').style.display = 'none';
+    const endBtn = document.getElementById('end-swap-btn');
+    if (endBtn) endBtn.style.display = 'none';
+    
     loadChatMessages(partnerId);
     loadChatConnections();
 }
@@ -1064,7 +1074,6 @@ async function openManageConnectionsModal() {
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
 async function removeConnection(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput }); }
 
-
 // ==========================================
 // 7. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
@@ -1083,18 +1092,31 @@ async function loadUserProfile() {
         const imgElement = document.getElementById('profile-avatar-img');
         if (profile.avatar_url) { document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
 
-        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId);
+        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId).eq('is_active', true);
         const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
         const skillsContainer = document.getElementById('profile-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
+            const trophySkills = profile.trophy_skills ? profile.trophy_skills.split(',').map(s => s.trim().toLowerCase()) : [];
+
             skillsContainer.innerHTML = skillsArray.map(skill => {
                 const s = skill.trim();
                 if (s !== "") {
                     const isActive = activeSkillNames.includes(s.toLowerCase());
-                    const bgStyle = isActive ? "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;" : "";
-                    const removeBtn = isActive ? "" : `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i>`;
+                    const isTrophy = trophySkills.includes(s.toLowerCase());
+                    
+                    let bgStyle = "";
+                    let removeBtn = `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: #9ca3af;" onclick="removeSingleSkill('${s}')" title="Remove ${s}"></i>`;
+
+                    if (isTrophy) {
+                        bgStyle = "background: linear-gradient(90deg, #8b5cf6, #d946ef); color: white; border: none;";
+                        removeBtn = `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: white; opacity: 0.8;" onclick="removeSingleSkill('${s}')" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8" title="Remove ${s}"></i>`;
+                    } else if (isActive) {
+                        bgStyle = "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;";
+                        removeBtn = "";
+                    }
+                    
                     return `<span class="skill-tag" data-skill="${s}" style="display: flex; align-items: center; gap: 6px; cursor: grab; ${bgStyle}">${s}${removeBtn}</span>`;
                 }
                 return "";
@@ -1142,8 +1164,23 @@ function addSingleSkill() {
     };
 }
 async function removeSingleSkill(skillToRemove) {
-    const userId = localStorage.getItem('currentUserId'); const { data: profile } = await supabaseClient.from('profiles').select('profile_skills').eq('user_id', userId).single();
-    if (profile && profile.profile_skills) { let skillsArray = profile.profile_skills.split(',').map(s => s.trim()); const updatedSkills = skillsArray.filter(s => s !== skillToRemove && s !== "").join(', '); const { error } = await supabaseClient.from('profiles').update({ profile_skills: updatedSkills }).eq('user_id', userId); if (!error) loadUserProfile(); }
+    const userId = localStorage.getItem('currentUserId'); 
+    const { data: profile } = await supabaseClient.from('profiles').select('profile_skills, trophy_skills').eq('user_id', userId).single();
+    if (profile && profile.profile_skills) { 
+        let skillsArray = profile.profile_skills.split(',').map(s => s.trim()); 
+        const updatedSkills = skillsArray.filter(s => s !== skillToRemove && s !== "").join(', '); 
+        let updateData = { profile_skills: updatedSkills };
+        
+        if (profile.trophy_skills) {
+            let trophyArray = profile.trophy_skills.split(',').map(s => s.trim());
+            if (trophyArray.includes(skillToRemove)) {
+                updateData.trophy_skills = trophyArray.filter(s => s !== skillToRemove && s !== "").join(', ');
+            }
+        }
+        
+        const { error } = await supabaseClient.from('profiles').update(updateData).eq('user_id', userId); 
+        if (!error) loadUserProfile(); 
+    }
 }
 function addWantedSkill() {
     const userId = localStorage.getItem('currentUserId'); const modal = document.getElementById('custom-edit-modal'); document.getElementById('modal-title').innerText = "Add a skill you want to learn"; document.getElementById('modal-input').value = ''; document.getElementById('modal-input').placeholder = "e.g., Python, Public Speaking..."; modal.style.display = 'flex';
@@ -1170,12 +1207,31 @@ async function loadPublicProfile() {
         document.getElementById('public-headline').innerText = profile.headline || ""; document.getElementById('public-location').innerText = profile.location || ""; document.getElementById('public-bio').innerText = profile.bio || "No bio provided.";
         const bannerImg = document.getElementById('public-banner-img'); if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
         const imgElement = document.getElementById('public-avatar-img'); if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
-        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId); const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+        
+        const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId).eq('is_active', true); 
+        const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+        
         const skillsContainer = document.getElementById('public-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
             const skillsArray = profile.profile_skills.split(',');
-            skillsContainer.innerHTML = skillsArray.map(skill => { const s = skill.trim(); if (s !== "") { const isActive = activeSkillNames.includes(s.toLowerCase()); const bgStyle = isActive ? "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;" : ""; return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px; ${bgStyle}">${s}</span>`; } return ""; }).join('');
+            const trophySkills = profile.trophy_skills ? profile.trophy_skills.split(',').map(s => s.trim().toLowerCase()) : [];
+            
+            skillsContainer.innerHTML = skillsArray.map(skill => { 
+                const s = skill.trim(); 
+                if (s !== "") { 
+                    const isActive = activeSkillNames.includes(s.toLowerCase()); 
+                    const isTrophy = trophySkills.includes(s.toLowerCase());
+                    
+                    let bgStyle = "";
+                    if (isTrophy) bgStyle = "background: linear-gradient(90deg, #8b5cf6, #d946ef); color: white; border: none;";
+                    else if (isActive) bgStyle = "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;";
+                    
+                    return `<span class="skill-tag" style="display: flex; align-items: center; gap: 6px; ${bgStyle}">${s}</span>`; 
+                } 
+                return ""; 
+            }).join('');
         } else { skillsContainer.innerHTML = `<p style="color: #9ca3af; font-size: 0.95rem; font-style: italic; margin: 0;">No skills listed.</p>`; }
+        
         const wantedSkillsContainer = document.getElementById('public-wanted-skills-container');
         if (profile.wanted_skills && profile.wanted_skills.trim() !== "") {
             const wantedSkillsArray = profile.wanted_skills.split(',');
@@ -2388,7 +2444,6 @@ async function markInboxRead() {
     loadInboxNotifications();
 }
 
-// Add click listener to close inbox when clicking outside
 window.addEventListener('click', function(event) {
     const inboxDropdown = document.getElementById('inbox-dropdown');
     if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Inbox"]')) {
