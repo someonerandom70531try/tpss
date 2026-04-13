@@ -466,6 +466,7 @@ async function makeSwapOffer(receiverId, skillId, skillTitle) {
 async function handleAcceptOffer(offerId, skillId) {
     showToast("Processing swap...");
     
+    // Trigger the custom RPC cascade function we built in Supabase
     const { error } = await supabaseClient.rpc('accept_swap_offer', { target_offer_id: offerId });
     
     if (error) { 
@@ -482,8 +483,10 @@ async function handleAcceptOffer(offerId, skillId) {
 }
 
 async function handleRejectOffer(offerId, skillId) {
+    // Manually reject the one specific user
     await supabaseClient.from('swap_requests').update({ status: 'rejected' }).eq('id', offerId);
     
+    // Get their info to send a rejection notice
     const { data: req } = await supabaseClient.from('swap_requests').select('requester_id, skills(title)').eq('id', offerId).single();
     if(req) {
         await supabaseClient.from('notifications').insert([{
@@ -678,6 +681,7 @@ async function openChatWithUser(userId, username, avatarUrl) {
     const videoBtn = document.getElementById('video-call-btn');
     if (videoBtn) videoBtn.style.display = 'flex';
 
+    // NEW: Check if these two users share an ACTIVE swap, if so, show the "End Swap" button
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: activeSwaps } = await supabaseClient.from('swap_requests')
         .select('id')
@@ -776,6 +780,7 @@ function createMessageHtml(msg, isSender) {
         maxW = '85%';
         rightClickEvent = ''; 
     }
+    // NEW: Handle the Swap End Request logic
     else if (msg.content === '[SWAP_END_REQUEST]') {
         if (isSender) {
             contentHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:8px; font-weight: 500; color: #4b5563; text-align:center;">
@@ -794,6 +799,7 @@ function createMessageHtml(msg, isSender) {
         metaHtml = '';
         rightClickEvent = '';
     }
+    // NEW: Handle the Success message when the swap is completed
     else if (msg.content === '[SWAP_ENDED]') {
         contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 600; color: #059669;">
                         <i data-lucide="party-popper" style="width:18px; height:18px;"></i> Swap Officially Completed! You are both free to make new offers.
@@ -846,6 +852,7 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
+// NEW: Request End Swap action
 async function requestEndSwap() {
     const currentUserId = localStorage.getItem('currentUserId');
     if(!currentUserId || !currentChatUserId) return;
@@ -854,19 +861,22 @@ async function requestEndSwap() {
         sender_id: currentUserId, receiver_id: currentChatUserId, content: '[SWAP_END_REQUEST]'
     }]);
     
-    document.getElementById('end-swap-btn').style.display = 'none';
+    document.getElementById('end-swap-btn').style.display = 'none'; // Hide locally so they don't spam it
     loadChatMessages(currentChatUserId);
     loadChatConnections();
 }
 
+// NEW: Confirm End Swap action (Triggered by the partner)
 async function confirmEndSwap(msgId, partnerId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
+    // 1. Get the specific swap to find out WHAT skill was completed
     const { data: swapArray } = await supabaseClient.from('swap_requests')
         .select('skill_id, skills(title, user_id)')
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
 
+    // 2. Award the Gamification Trophy!
     if (swapArray && swapArray.length > 0) {
         const swapData = swapArray[0];
         if (swapData.skills) {
@@ -883,17 +893,21 @@ async function confirmEndSwap(msgId, partnerId) {
         }
     }
 
+    // 3. Update the database to mark swap as 'completed'
     await supabaseClient.from('swap_requests')
         .update({ status: 'completed' })
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
         
+    // 4. Free up BOTH users' availability
     await supabaseClient.from('profiles')
         .update({ is_available: true })
         .in('user_id', [currentUserId, partnerId]);
 
+    // 5. Mark the "Request" message as deleted so the button vanishes
     await supabaseClient.from('messages').update({ is_deleted: true }).eq('id', msgId);
     
+    // 6. Send the global "Swap Completed" banner message
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: partnerId, content: '[SWAP_ENDED]'
     }]);
@@ -1042,8 +1056,26 @@ async function connectWithUser(receiverId) {
 async function updateRequestsBadge() {
     const currentUserId = localStorage.getItem('currentUserId'); if (!currentUserId) return;
     const { count } = await supabaseClient.from('connections').select('*', { count: 'exact', head: true }).eq('receiver_id', currentUserId).eq('status', 'pending');
-    const badge = document.getElementById('requests-badge');
-    if (badge) { if (count > 0) { badge.innerText = count; badge.style.display = 'inline-block'; } else { badge.style.display = 'none'; } }
+    
+    const dropBadge = document.getElementById('requests-badge');
+    if (dropBadge) { 
+        if (count > 0) { 
+            dropBadge.innerText = count > 99 ? '99+' : count; 
+            dropBadge.style.display = 'inline-block'; 
+        } else { 
+            dropBadge.style.display = 'none'; 
+        } 
+    }
+    
+    const navBadge = document.getElementById('network-badge');
+    if (navBadge) {
+        if (count > 0) { 
+            navBadge.innerText = count > 99 ? '99+' : count; 
+            navBadge.style.display = 'flex'; 
+        } else { 
+            navBadge.style.display = 'none'; 
+        } 
+    }
 }
 
 async function openRequestsModal() {
@@ -1074,6 +1106,7 @@ async function openManageConnectionsModal() {
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
 async function removeConnection(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput }); }
 
+
 // ==========================================
 // 7. PRIVATE PROFILE PAGE LOGIC
 // ==========================================
@@ -1094,11 +1127,9 @@ async function loadUserProfile() {
         const imgElement = document.getElementById('profile-avatar-img');
         if (profile.avatar_url) { document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
 
-        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId).eq('is_active', true);
         let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
-        // 2. Fetch ongoing swaps (accepted but not completed)
         const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
             .select('skills(title)')
             .eq('status', 'accepted')
@@ -1231,11 +1262,9 @@ async function loadPublicProfile() {
         const bannerImg = document.getElementById('public-banner-img'); if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
         const imgElement = document.getElementById('public-avatar-img'); if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
         
-        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId).eq('is_active', true); 
         let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
-        // 2. Fetch ongoing swaps
         const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
             .select('skills(title)')
             .eq('status', 'accepted')
@@ -1370,7 +1399,6 @@ function openAllCertsModal() {
 }
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
 
-
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
 // ==========================================
@@ -1385,14 +1413,12 @@ function setupRealtimeListeners() {
             const table = payload.table;
             const data = payload.new || payload.old;
 
-            // NEW: Listen to swap_requests alongside skills
             if (table === 'skills' || table === 'swap_requests') {
                 if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
             }
 
-            // NEW: Listen to notifications for the new Bell icon
             if (table === 'notifications' && currentUserId) {
                 if (data && data.user_id == currentUserId) {
                     updateInboxBadge();
@@ -1496,11 +1522,13 @@ function setupRealtimeListeners() {
         })
         .subscribe();
 }
+
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
     updateRequestsBadge();
     updateMessagesBadge();
+    updateInboxBadge();
     
     setupRealtimeListeners();
 
@@ -2481,7 +2509,7 @@ async function updateInboxBadge() {
 
     const badge = document.getElementById('inbox-badge');
     if (badge) {
-        if (count > 0) { badge.innerText = count; badge.style.display = 'flex'; } 
+        if (count > 0) { badge.style.display = 'block'; } 
         else { badge.style.display = 'none'; }
     }
 }
@@ -2495,7 +2523,8 @@ async function markInboxRead() {
 
 window.addEventListener('click', function(event) {
     const inboxDropdown = document.getElementById('inbox-dropdown');
-    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Inbox"]')) {
+    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Notifications"]')) {
         inboxDropdown.classList.remove('show');
     }
+});
 });
