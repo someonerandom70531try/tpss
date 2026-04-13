@@ -232,6 +232,15 @@ window.onclick = function(event) {
     document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
 }
 
+window.signInWithGoogle = async function() {
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+    });
+    if (error) {
+        showAuthMessage("Error signing in with Google.");
+        console.error(error);
+    }
+}
 
 // ==========================================
 // 2. HOME PAGE (EXPLORE SKILLS) LOGIC
