@@ -1081,10 +1081,12 @@ async function loadUserProfile() {
     const userId = localStorage.getItem('currentUserId'); if (!userId) { window.location.href = 'auth.html'; return; }
     const { data: user } = await supabaseClient.from('app_users').select('username').eq('id', userId).single();
     const { data: profile } = await supabaseClient.from('profiles').select('*').eq('user_id', userId).single();
+    
     if (user) {
         document.getElementById('profile-page-name').innerText = user.username; const initialDiv = document.getElementById('profile-page-initial');
         if (!profile || !profile.avatar_url) { initialDiv.innerText = user.username.charAt(0).toUpperCase(); initialDiv.style.backgroundColor = getColorForUsername(user.username); initialDiv.style.display = 'flex'; }
     }
+    
     if (profile) {
         document.getElementById('profile-headline').innerText = profile.headline || ""; document.getElementById('profile-location').innerText = profile.location || "Where are you based?"; document.getElementById('profile-bio').innerText = profile.bio || "Tell us about yourself...";
         const bannerImg = document.getElementById('profile-banner-img');
@@ -1092,8 +1094,23 @@ async function loadUserProfile() {
         const imgElement = document.getElementById('profile-avatar-img');
         if (profile.avatar_url) { document.getElementById('profile-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
 
+        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', userId).eq('is_active', true);
-        const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+        let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+
+        // 2. Fetch ongoing swaps (accepted but not completed)
+        const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
+            .select('skills(title)')
+            .eq('status', 'accepted')
+            .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`);
+            
+        if (ongoingSwaps) {
+            ongoingSwaps.forEach(swap => {
+                if (swap.skills && swap.skills.title) {
+                    activeSkillNames.push(swap.skills.title.toLowerCase());
+                }
+            });
+        }
 
         const skillsContainer = document.getElementById('profile-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
@@ -1111,7 +1128,11 @@ async function loadUserProfile() {
 
                     if (isTrophy) {
                         bgStyle = "background: linear-gradient(90deg, #8b5cf6, #d946ef); color: white; border: none;";
-                        removeBtn = `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: white; opacity: 0.8;" onclick="removeSingleSkill('${s}')" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8" title="Remove ${s}"></i>`;
+                        if (isActive) {
+                            removeBtn = ""; 
+                        } else {
+                            removeBtn = `<i data-lucide="x" style="width: 14px; height: 14px; cursor: pointer; color: white; opacity: 0.8;" onclick="removeSingleSkill('${s}')" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8" title="Remove ${s}"></i>`;
+                        }
                     } else if (isActive) {
                         bgStyle = "background-color: #dcfce7; color: #059669; border: 1px solid #a7f3d0;";
                         removeBtn = "";
@@ -1202,14 +1223,31 @@ async function removeWantedSkill(skillToRemove) {
 async function loadPublicProfile() {
     const urlParams = new URLSearchParams(window.location.search); const targetUserId = urlParams.get('id'); if (!targetUserId) { window.location.href = 'index.html'; return; }
     const { data: user } = await supabaseClient.from('app_users').select('username').eq('id', targetUserId).single(); const { data: profile } = await supabaseClient.from('profiles').select('*').eq('user_id', targetUserId).single();
+    
     if (user) { document.getElementById('public-page-name').innerText = user.username; const initialDiv = document.getElementById('public-page-initial'); if (!profile || !profile.avatar_url) { initialDiv.innerText = user.username.charAt(0).toUpperCase(); initialDiv.style.backgroundColor = getColorForUsername(user.username); initialDiv.style.display = 'flex'; } }
+    
     if (profile) {
         document.getElementById('public-headline').innerText = profile.headline || ""; document.getElementById('public-location').innerText = profile.location || ""; document.getElementById('public-bio').innerText = profile.bio || "No bio provided.";
         const bannerImg = document.getElementById('public-banner-img'); if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
         const imgElement = document.getElementById('public-avatar-img'); if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
         
+        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId).eq('is_active', true); 
-        const activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+        let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
+
+        // 2. Fetch ongoing swaps
+        const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
+            .select('skills(title)')
+            .eq('status', 'accepted')
+            .or(`requester_id.eq.${targetUserId},receiver_id.eq.${targetUserId}`);
+            
+        if (ongoingSwaps) {
+            ongoingSwaps.forEach(swap => {
+                if (swap.skills && swap.skills.title) {
+                    activeSkillNames.push(swap.skills.title.toLowerCase());
+                }
+            });
+        }
         
         const skillsContainer = document.getElementById('public-skills-container');
         if (profile.profile_skills && profile.profile_skills.trim() !== "") {
