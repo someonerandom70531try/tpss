@@ -983,7 +983,7 @@ async function updateMessagesBadge() {
     const badge = document.getElementById('messages-badge');
     if (badge) {
         if (count > 0) {
-            badge.innerText = count;
+            badge.innerText = count > 99 ? '99+' : count;
             badge.style.display = 'flex';
         } else {
             badge.style.display = 'none';
@@ -1385,10 +1385,22 @@ function setupRealtimeListeners() {
             const table = payload.table;
             const data = payload.new || payload.old;
 
-            if (table === 'skills') {
+            // NEW: Listen to swap_requests alongside skills
+            if (table === 'skills' || table === 'swap_requests') {
                 if (document.getElementById('skills-grid') || document.getElementById('skills-carousel')) loadSkills();
                 if (document.getElementById('profile-page-name')) loadUserProfile();
                 if (document.getElementById('public-page-name')) loadPublicProfile();
+            }
+
+            // NEW: Listen to notifications for the new Bell icon
+            if (table === 'notifications' && currentUserId) {
+                if (data && data.user_id == currentUserId) {
+                    updateInboxBadge();
+                    const inboxDropdown = document.getElementById('inbox-dropdown');
+                    if (inboxDropdown && inboxDropdown.classList.contains('show')) {
+                        loadInboxNotifications();
+                    }
+                }
             }
 
             if (table === 'connections' && currentUserId) {
@@ -1484,7 +1496,6 @@ function setupRealtimeListeners() {
         })
         .subscribe();
 }
-
 document.addEventListener('DOMContentLoaded', () => {
     loadSkills();
     updateUIForUser();
