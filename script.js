@@ -34,136 +34,82 @@ let isLoginMode = true;
 window.toggleAuthMode = function(event) {
     if (event) event.preventDefault();
     isLoginMode = !isLoginMode;
-    
-    // Looks for whichever IDs you used in your HTML
-    const authTitle = document.getElementById('auth-title') || document.getElementById('form-title'); 
+    const authTitle = document.getElementById('auth-title'); 
     const authSubtitle = document.getElementById('auth-subtitle');
     const toggleText = document.getElementById('toggle-text'); 
     const toggleLink = document.getElementById('toggle-link');
-    const msgBox = document.getElementById('auth-message') || document.getElementById('auth-error'); 
+    const msgBox = document.getElementById('auth-message'); 
     const usernameContainer = document.getElementById('username-container');
-    const usernameInput = document.getElementById('auth-username') || document.getElementById('username'); 
+    const usernameInput = document.getElementById('auth-username'); 
     const passwordHint = document.getElementById('password-hint');
-    const submitBtn = document.getElementById('auth-submit-btn') || document.getElementById('submit-btn');
+    const submitBtn = document.getElementById('auth-submit-btn');
 
     if (msgBox) msgBox.style.display = 'none';
-    
     if (isLoginMode) {
-        if (authTitle) authTitle.innerText = 'Welcome Back'; 
-        if (authSubtitle) authSubtitle.innerText = 'Enter your details to sign in';
-        if (toggleText) toggleText.innerText = "Don't have an account?"; 
-        if (toggleLink) toggleLink.innerText = 'Sign up';
-        if (usernameContainer) usernameContainer.style.display = 'none'; 
-        if (usernameInput) usernameInput.removeAttribute('required');
-        if (passwordHint) passwordHint.style.display = 'none'; 
-        if (submitBtn) submitBtn.innerText = 'Sign In';
+        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
+        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
+        if(usernameContainer) usernameContainer.style.display = 'none'; 
+        if(usernameInput) usernameInput.removeAttribute('required');
+        if(passwordHint) passwordHint.style.display = 'none'; 
+        submitBtn.innerText = 'Sign In';
     } else {
-        if (authTitle) authTitle.innerText = 'Create an Account'; 
-        if (authSubtitle) authSubtitle.innerText = 'Join the community to start swapping skills';
-        if (toggleText) toggleText.innerText = "Already have an account?"; 
-        if (toggleLink) toggleLink.innerText = 'Sign in';
-        if (usernameContainer) usernameContainer.style.display = 'block'; 
-        if (usernameInput) usernameInput.setAttribute('required', 'true');
-        if (passwordHint) passwordHint.style.display = 'block'; 
-        if (submitBtn) submitBtn.innerText = 'Create Account';
+        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
+        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
+        if(usernameContainer) usernameContainer.style.display = 'block'; 
+        if(usernameInput) usernameInput.setAttribute('required', 'true');
+        if(passwordHint) passwordHint.style.display = 'block'; 
+        submitBtn.innerText = 'Create Account';
     }
 }
 
 window.showAuthMessage = function(message, isError = true) {
-    const msgBox = document.getElementById('auth-message') || document.getElementById('auth-error'); 
-    if (!msgBox) {
-        alert(message); // Fallback so you always see errors
-        return;
-    }
-    msgBox.innerText = message; 
-    msgBox.className = isError ? 'auth-message error' : 'auth-message success'; 
-    msgBox.style.display = 'block';
-    if (msgBox.id === 'auth-error') msgBox.style.color = isError ? '#ef4444' : '#10b981';
+    const msgBox = document.getElementById('auth-message'); if (!msgBox) return;
+    msgBox.innerText = message; msgBox.className = isError ? 'auth-message error' : 'auth-message success'; msgBox.style.display = 'block';
 }
 
-// THIS FIXES THE RELOAD: It assigns the function to BOTH names so it can't miss.
-window.handleAuth = window.handleAuthSubmit = async function(event) { 
-    if (event) event.preventDefault(); // STOPS THE PAGE RELOAD
-    
-    // Auto-detects mode based on the title if toggle wasn't clicked
-    const authTitle = document.getElementById('auth-title') || document.getElementById('form-title');
-    if (authTitle && authTitle.innerText.includes('Create')) {
-        isLoginMode = false;
-    } else if (authTitle && authTitle.innerText.includes('Welcome')) {
-        isLoginMode = true;
-    }
-
+window.handleAuthSubmit = async function(event) { 
+    event.preventDefault(); 
     if (isLoginMode) await handleSignIn(); 
     else await handleSignUp(); 
 }
 
+// Fallback mapping in case your HTML calls handleAuth instead of handleAuthSubmit
+window.handleAuth = window.handleAuthSubmit;
+
+// ADDED: Google Sign-in function to fix the ReferenceError
+window.signInWithGoogle = async function() {
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+    });
+    if (error) {
+        showAuthMessage("Error signing in with Google.");
+        console.error(error);
+    }
+}
+
 window.handleSignUp = async function() {
-    const emailInput = document.getElementById('auth-email') || document.getElementById('email');
-    const usernameInput = document.getElementById('auth-username') || document.getElementById('username');
-    const passwordInput = document.getElementById('auth-password') || document.getElementById('password');
-
-    if (!emailInput || !passwordInput) {
-        showAuthMessage("Form fields not found. Check your HTML IDs.");
-        return;
-    }
-
-    const email = emailInput.value.trim(); 
-    const username = usernameInput ? usernameInput.value.trim() : email.split('@')[0]; 
-    const password = passwordInput.value;
-    
+    const email = document.getElementById('auth-email').value.trim(); 
+    const username = document.getElementById('auth-username').value.trim(); 
+    const password = document.getElementById('auth-password').value;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) { 
-        showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); 
-        return; 
-    }
+    if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
     
     const { data: existingUsers } = await supabaseClient.from('app_users').select('*').or(`username.eq.${username},email.eq.${email}`);
-    if (existingUsers && existingUsers.length > 0) { 
-        showAuthMessage("That username or email is already taken."); 
-        return; 
-    }
+    if (existingUsers && existingUsers.length > 0) { showAuthMessage("That username or email is already taken."); return; }
     
     const { data: newUser, error: insertError } = await supabaseClient.from('app_users').insert([{ email, username, password }]).select().single();
-    if (insertError) { 
-        showAuthMessage("Error creating account. Please try again."); 
-        return; 
-    }
+    if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
     
     if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true }]);
-    
-    const authForm = document.getElementById('auth-form') || document.querySelector('form');
-    if (authForm) authForm.reset(); 
-    
-    showAuthMessage("Account created successfully! Logging you in...", false); 
-    
-    // Automatically log the user in after signing up
-    setTimeout(() => {
-        localStorage.setItem('currentUserId', newUser.id); 
-        localStorage.setItem('currentUser', newUser.username); 
-        window.location.href = "index.html";
-    }, 1000);
+    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
 }
 
 window.handleSignIn = async function() {
-    const emailInput = document.getElementById('auth-email') || document.getElementById('email');
-    const passwordInput = document.getElementById('auth-password') || document.getElementById('password');
-
-    if (!emailInput || !passwordInput) {
-        showAuthMessage("Form fields not found. Check your HTML IDs.");
-        return;
-    }
-
-    const email = emailInput.value.trim(); 
-    const password = passwordInput.value;
-    
+    const email = document.getElementById('auth-email').value.trim(); 
+    const password = document.getElementById('auth-password').value;
     const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
+    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
     
-    if (error || !data || data.length === 0) { 
-        showAuthMessage("Invalid email or password."); 
-        return; 
-    }
-    
-    // Success! Save user data and redirect
     localStorage.setItem('currentUserId', data[0].id); 
     localStorage.setItem('currentUser', data[0].username); 
     window.location.href = "index.html";
@@ -218,7 +164,7 @@ window.toggleConnectionsDropdown = function(event) {
     
     if (connDropdown) { 
         connDropdown.classList.toggle('show'); 
-        if (connDropdown.classList.contains('show') && document.getElementById('connection-search') && document.getElementById('connection-search').value === '') {
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
             if (typeof loadTopConnections === 'function') loadTopConnections();
         }
     }
@@ -230,16 +176,6 @@ window.onclick = function(event) {
     if (connDropdown && connDropdown.classList.contains('show') && !event.target.closest('#connections-dropdown') && !event.target.closest('button[title="My Network"]')) connDropdown.classList.remove('show');
     if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Notifications"]')) inboxDropdown.classList.remove('show');
     document.querySelectorAll('.post-options-menu').forEach(m => m.style.display = 'none');
-}
-
-window.signInWithGoogle = async function() {
-    const { data, error } = await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
-    });
-    if (error) {
-        showAuthMessage("Error signing in with Google.");
-        console.error(error);
-    }
 }
 
 // ==========================================
@@ -948,51 +884,26 @@ async function requestEndSwap() {
 async function confirmEndSwap(msgId, partnerId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
-    // 1. Get the specific swap to find out WHAT skill was completed
-    const { data: swapArray } = await supabaseClient.from('swap_requests')
-        .select('skill_id, skills(title, user_id)')
-        .eq('status', 'accepted')
-        .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
-
-    // 2. Award the Gamification Trophy!
-    if (swapArray && swapArray.length > 0) {
-        const swapData = swapArray[0];
-        if (swapData.skills) {
-            const skillTitle = swapData.skills.title;
-            const ownerId = swapData.skills.user_id;
-
-            const { data: ownerProfile } = await supabaseClient.from('profiles').select('trophy_skills').eq('user_id', ownerId).single();
-            let trophies = ownerProfile && ownerProfile.trophy_skills ? ownerProfile.trophy_skills.split(',').map(s => s.trim()) : [];
-
-            if (!trophies.includes(skillTitle)) {
-                trophies.push(skillTitle);
-                await supabaseClient.from('profiles').update({ trophy_skills: trophies.join(', ') }).eq('user_id', ownerId);
-            }
-        }
-    }
-
-    // 3. Update the database to mark swap as 'completed'
+    // 1. Update the database to mark swap as 'completed'
     await supabaseClient.from('swap_requests')
         .update({ status: 'completed' })
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
         
-    // 4. Free up BOTH users' availability
+    // 2. Free up BOTH users' availability
     await supabaseClient.from('profiles')
         .update({ is_available: true })
         .in('user_id', [currentUserId, partnerId]);
 
-    // 5. Mark the "Request" message as deleted so the button vanishes
+    // 3. Mark the "Request" message as deleted so the button vanishes
     await supabaseClient.from('messages').update({ is_deleted: true }).eq('id', msgId);
     
-    // 6. Send the global "Swap Completed" banner message
+    // 4. Send the global "Swap Completed" banner message
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: partnerId, content: '[SWAP_ENDED]'
     }]);
     
-    const endBtn = document.getElementById('end-swap-btn');
-    if (endBtn) endBtn.style.display = 'none';
-    
+    document.getElementById('end-swap-btn').style.display = 'none';
     loadChatMessages(partnerId);
     loadChatConnections();
 }
@@ -1340,9 +1251,11 @@ async function loadPublicProfile() {
         const bannerImg = document.getElementById('public-banner-img'); if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
         const imgElement = document.getElementById('public-avatar-img'); if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
         
+        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId).eq('is_active', true); 
         let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
+        // 2. Fetch ongoing swaps
         const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
             .select('skills(title)')
             .eq('status', 'accepted')
@@ -1476,6 +1389,7 @@ function openAllCertsModal() {
     }
 }
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
+
 
 // ==========================================
 // 11. PAGE LOAD & REALTIME LISTENERS
@@ -2605,4 +2519,4 @@ window.addEventListener('click', function(event) {
         inboxDropdown.classList.remove('show');
     }
 });
-
+function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
