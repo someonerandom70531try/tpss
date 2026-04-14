@@ -9,7 +9,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body>
+<body style="background-color: #f9fafb;">
+    
     <nav class="navbar">
         <div class="nav-container">
             <div class="logo">
@@ -18,7 +19,10 @@
             </div>
             <div class="nav-actions">
                 <div id="auth-container" style="position: relative;">
-                    <div id="logged-out-ui"><a href="auth.html" class="btn-primary">Sign In</a></div>
+                    <div id="logged-out-ui">
+                        <a href="auth.html" class="btn-primary">Sign In</a>
+                    </div>
+                    
                     <div id="logged-in-ui" style="display: none; align-items: center; gap: 15px;">
                         
                         <div style="position: relative;">
@@ -70,8 +74,12 @@
                                     <p style="font-size: 0.8rem; color: #6b7280; margin: 0;">Skill Swap User</p>
                                 </div>
                                 <hr style="margin: 4px 0; border: none; border-top: 1px solid #eee;">
-                                <a href="account.html" class="dropdown-item"><i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account</a>
-                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout</button>
+                                <a href="account.html" class="dropdown-item">
+                                    <i data-lucide="user" style="width: 16px; height: 16px;"></i> My Account
+                                </a>
+                                <button onclick="handleLogout()" class="dropdown-item logout-btn" style="width: 100%; text-align: left;">
+                                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Logout
+                                </button>
                             </div>
                         </div>
 
@@ -172,7 +180,7 @@
                 </button>
             </div>
             <div id="skill-detail-content" style="max-height: 75vh; overflow-y: auto; padding-right: 5px;">
-            </div>
+                </div>
         </div>
     </div>
 
