@@ -68,7 +68,7 @@ window.showAuthMessage = function(message, isError = true) {
 }
 
 window.handleAuthSubmit = async function(event) { 
-    event.preventDefault(); 
+    if (event) event.preventDefault(); 
     if (isLoginMode) await handleSignIn(); 
     else await handleSignUp(); 
 }
@@ -76,8 +76,9 @@ window.handleAuthSubmit = async function(event) {
 // Fallback mapping in case your HTML calls handleAuth instead of handleAuthSubmit
 window.handleAuth = window.handleAuthSubmit;
 
-// ADDED: Google Sign-in function to fix the ReferenceError
-window.signInWithGoogle = async function() {
+// Google Sign-in function
+window.signInWithGoogle = async function(event) {
+    if (event) event.preventDefault();
     const { data, error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
     });
@@ -2553,33 +2554,36 @@ async function loadInboxNotifications() {
     
     lucide.createIcons();
 }
-    
-    list.innerHTML = notifications.map(notif => {
-        let icon = 'bell';
-        let color = '#6b7280';
-        let bg = '#f3f4f6';
-        
-        if (notif.type === 'new_offer') { icon = 'inbox'; color = '#3b82f6'; bg = '#dbeafe'; }
-        if (notif.type === 'accepted') { icon = 'check-circle'; color = '#10b981'; bg = '#d1fae5'; }
-        if (notif.type === 'rejected') { icon = 'x-circle'; color = '#ef4444'; bg = '#fee2e2'; }
-        
-        const isUnread = !notif.is_read ? 'border-left: 3px solid #8b5cf6;' : 'border-left: 3px solid transparent;';
-        const date = new Date(notif.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
-        
-        return `
-        <div style="${isUnread} background: #f9fafb; padding: 12px; border-radius: 6px; display: flex; gap: 12px; align-items: flex-start;">
-            <div style="background: ${bg}; color: ${color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                <i data-lucide="${icon}" style="width: 16px; height: 16px;"></i>
-            </div>
-            <div>
-                <p style="margin: 0 0 4px 0; font-size: 0.85rem; color: #111827; line-height: 1.4;">${notif.message}</p>
-                <span style="font-size: 0.7rem; color: #9ca3af;">${date}</span>
-            </div>
-        </div>`;
-    }).join('');
-    
-    lucide.createIcons();
+
+async function updateInboxBadge() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) return;
+
+    const { count } = await supabaseClient.from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
+
+    const badge = document.getElementById('inbox-badge');
+    if (badge) {
+        if (count > 0) { badge.innerText = count; badge.style.display = 'flex'; } 
+        else { badge.style.display = 'none'; }
+    }
 }
+
+async function markInboxRead() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    await supabaseClient.from('notifications').update({ is_read: true }).eq('user_id', currentUserId).eq('is_read', false);
+    updateInboxBadge();
+    loadInboxNotifications();
+}
+
+window.addEventListener('click', function(event) {
+    const inboxDropdown = document.getElementById('inbox-dropdown');
+    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Notifications"]')) {
+        inboxDropdown.classList.remove('show');
+    }
+});
 
 async function updateInboxBadge() {
     const currentUserId = localStorage.getItem('currentUserId');
