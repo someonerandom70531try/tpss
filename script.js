@@ -2725,13 +2725,16 @@ async function loadAdminReports() {
 }
 
 window.resolveReport = async function(reportId, skillId) {
-    if(confirm("Are you sure you want to permanently delete this skill post?")) {
-        // Delete the skill
-        await supabaseClient.from('skills').delete().eq('id', skillId);
-        // Mark report as resolved
+    if(confirm("Are you sure you want to remove this skill post from the public feed?")) {
+        // "Soft delete" it by setting is_active to false. 
+        // This hides it from the feed without breaking database foreign keys!
+        await supabaseClient.from('skills').update({ is_active: false }).eq('id', skillId);
+        
+        // Mark the report as resolved so it disappears from this admin queue
         await supabaseClient.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+        
         loadAdminReports();
-        showToast("Post deleted and report resolved.");
+        showToast("Post removed from feed and report resolved.");
     }
 }
 
