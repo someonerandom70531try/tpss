@@ -122,40 +122,52 @@ window.handleLogout = async function() {
 }
 
 window.updateUIForUser = async function() {
-    // Inside window.updateUIForUser...
-            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url, role').eq('user_id', currentUserId).single();
-            
-            if (profile) {
-                // ADD THIS LINE: Save the role so the public feed knows you are an admin
-                localStorage.setItem('currentUserRole', profile.role);
-
-                if (profile.avatar_url && navAvatarImg) {
-// ... rest of the function remains the same
-    const loggedOutUI = document.getElementById('logged-out-ui'); const loggedInUI = document.getElementById('logged-in-ui');
-    const avatarBtn = document.getElementById('user-avatar-btn'); const avatarInitial = document.getElementById('avatar-initial');
-    const dropdownUsername = document.getElementById('dropdown-username'); const navAvatarImg = document.getElementById('nav-avatar-img');
+    const loggedOutUI = document.getElementById('logged-out-ui'); 
+    const loggedInUI = document.getElementById('logged-in-ui');
+    const avatarBtn = document.getElementById('user-avatar-btn'); 
+    const avatarInitial = document.getElementById('avatar-initial');
+    const dropdownUsername = document.getElementById('dropdown-username'); 
+    const navAvatarImg = document.getElementById('nav-avatar-img');
+    
     if (!loggedOutUI || !loggedInUI) return;
     
-    const currentUser = localStorage.getItem('currentUser'); const currentUserId = localStorage.getItem('currentUserId');
+    const currentUser = localStorage.getItem('currentUser'); 
+    const currentUserId = localStorage.getItem('currentUserId');
 
     if (currentUser) {
-        loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
-        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; if (dropdownUsername) dropdownUsername.innerText = currentUser;
+        loggedOutUI.style.display = 'none'; 
+        loggedInUI.style.display = 'flex';
+        
+        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; 
+        if (dropdownUsername) dropdownUsername.innerText = currentUser;
+        
         if (currentUserId) {
-            
-            // WE MUST FETCH THE ROLE HERE
+            // Fetch both the avatar and the role from Supabase
             const { data: profile } = await supabaseClient.from('profiles').select('avatar_url, role').eq('user_id', currentUserId).single();
             
             if (profile) {
+                // Save the role to localStorage so the feed knows if you are an admin
+                localStorage.setItem('currentUserRole', profile.role);
+
+                // Handle Avatar UI
                 if (profile.avatar_url && navAvatarImg) {
-                    if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
-                    if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
+                    if (avatarInitial) avatarInitial.style.display = 'none'; 
+                    navAvatarImg.src = profile.avatar_url; 
+                    navAvatarImg.style.display = 'block';
+                    if (avatarBtn) { 
+                        avatarBtn.style.backgroundColor = 'transparent'; 
+                        avatarBtn.style.border = '2px solid #22c55e'; 
+                    }
                 } else {
                     if (navAvatarImg) navAvatarImg.style.display = 'none';
-                    if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'flex'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
+                    if (avatarInitial) { 
+                        avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); 
+                        avatarInitial.style.display = 'flex'; 
+                        if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); 
+                    }
                 }
 
-                // UNHIDE THE ADMIN BUTTON IF THEY HAVE PERMISSION
+                // Handle Admin Dashboard Link visibility
                 const adminLink = document.getElementById('admin-dashboard-link');
                 if (adminLink) {
                     if (profile.role === 'admin' || profile.role === 'super_admin') {
@@ -166,7 +178,10 @@ window.updateUIForUser = async function() {
                 }
             }
         }
-    } else { loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none'; }
+    } else { 
+        loggedOutUI.style.display = 'block'; 
+        loggedInUI.style.display = 'none'; 
+    }
 }
 
 window.toggleDropdown = function(event) {
