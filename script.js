@@ -34,64 +34,75 @@ let isLoginMode = true;
 window.toggleAuthMode = function(event) {
     if (event) event.preventDefault();
     isLoginMode = !isLoginMode;
-    const authTitle = document.getElementById('auth-title'); 
+    const authTitle = document.getElementById('auth-title') || document.getElementById('form-title'); 
     const authSubtitle = document.getElementById('auth-subtitle');
     const toggleText = document.getElementById('toggle-text'); 
     const toggleLink = document.getElementById('toggle-link');
-    const msgBox = document.getElementById('auth-message'); 
+    const msgBox = document.getElementById('auth-message') || document.getElementById('auth-error'); 
     const usernameContainer = document.getElementById('username-container');
-    const usernameInput = document.getElementById('auth-username'); 
+    const usernameInput = document.getElementById('auth-username') || document.getElementById('username'); 
     const passwordHint = document.getElementById('password-hint');
-    const submitBtn = document.getElementById('auth-submit-btn');
+    const submitBtn = document.getElementById('auth-submit-btn') || document.getElementById('submit-btn');
 
     if (msgBox) msgBox.style.display = 'none';
     if (isLoginMode) {
-        authTitle.innerText = 'Welcome Back'; authSubtitle.innerText = 'Enter your details to sign in';
-        toggleText.innerText = "Don't have an account?"; toggleLink.innerText = 'Sign up';
+        if(authTitle) authTitle.innerText = 'Welcome Back'; 
+        if(authSubtitle) authSubtitle.innerText = 'Enter your details to sign in';
+        if(toggleText) toggleText.innerText = "Don't have an account?"; 
+        if(toggleLink) toggleLink.innerText = 'Sign up';
         if(usernameContainer) usernameContainer.style.display = 'none'; 
         if(usernameInput) usernameInput.removeAttribute('required');
         if(passwordHint) passwordHint.style.display = 'none'; 
-        submitBtn.innerText = 'Sign In';
+        if(submitBtn) submitBtn.innerText = 'Sign In';
     } else {
-        authTitle.innerText = 'Create an Account'; authSubtitle.innerText = 'Join the community to start swapping skills';
-        toggleText.innerText = "Already have an account?"; toggleLink.innerText = 'Sign in';
+        if(authTitle) authTitle.innerText = 'Create an Account'; 
+        if(authSubtitle) authSubtitle.innerText = 'Join the community to start swapping skills';
+        if(toggleText) toggleText.innerText = "Already have an account?"; 
+        if(toggleLink) toggleLink.innerText = 'Sign in';
         if(usernameContainer) usernameContainer.style.display = 'block'; 
         if(usernameInput) usernameInput.setAttribute('required', 'true');
         if(passwordHint) passwordHint.style.display = 'block'; 
-        submitBtn.innerText = 'Create Account';
+        if(submitBtn) submitBtn.innerText = 'Create Account';
     }
 }
 
 window.showAuthMessage = function(message, isError = true) {
-    const msgBox = document.getElementById('auth-message'); if (!msgBox) return;
-    msgBox.innerText = message; msgBox.className = isError ? 'auth-message error' : 'auth-message success'; msgBox.style.display = 'block';
+    const msgBox = document.getElementById('auth-message') || document.getElementById('auth-error'); 
+    if (!msgBox) { alert(message); return; }
+    msgBox.innerText = message; 
+    msgBox.className = isError ? 'auth-message error' : 'auth-message success'; 
+    msgBox.style.display = 'block';
+    if (msgBox.id === 'auth-error') msgBox.style.color = isError ? '#ef4444' : '#10b981';
 }
 
 window.handleAuthSubmit = async function(event) { 
     if (event) event.preventDefault(); 
+    const authTitle = document.getElementById('auth-title') || document.getElementById('form-title');
+    if (authTitle && authTitle.innerText.includes('Create')) { isLoginMode = false; } 
+    else if (authTitle && authTitle.innerText.includes('Welcome')) { isLoginMode = true; }
+
     if (isLoginMode) await handleSignIn(); 
     else await handleSignUp(); 
 }
 
-// Fallback mapping in case your HTML calls handleAuth instead of handleAuthSubmit
 window.handleAuth = window.handleAuthSubmit;
 
-// Google Sign-in function
 window.signInWithGoogle = async function(event) {
     if (event) event.preventDefault();
-    const { data, error } = await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
-    });
-    if (error) {
-        showAuthMessage("Error signing in with Google.");
-        console.error(error);
-    }
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({ provider: 'google' });
+    if (error) { showAuthMessage("Error signing in with Google."); console.error(error); }
 }
 
 window.handleSignUp = async function() {
-    const email = document.getElementById('auth-email').value.trim(); 
-    const username = document.getElementById('auth-username').value.trim(); 
-    const password = document.getElementById('auth-password').value;
+    const emailInput = document.getElementById('auth-email') || document.getElementById('email');
+    const usernameInput = document.getElementById('auth-username') || document.getElementById('username');
+    const passwordInput = document.getElementById('auth-password') || document.getElementById('password');
+    if (!emailInput || !passwordInput) return;
+
+    const email = emailInput.value.trim(); 
+    const username = usernameInput ? usernameInput.value.trim() : email.split('@')[0]; 
+    const password = passwordInput.value;
+    
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordRegex.test(password)) { showAuthMessage("Password requires 8+ chars, 1 uppercase, 1 lowercase, and 1 number."); return; }
     
@@ -102,15 +113,28 @@ window.handleSignUp = async function() {
     if (insertError) { showAuthMessage("Error creating account. Please try again."); return; }
     
     if (newUser) await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true }]);
-    document.getElementById('auth-form').reset(); showAuthMessage("Account created successfully! Please sign in.", false); toggleAuthMode(); 
+    
+    const authForm = document.getElementById('auth-form') || document.querySelector('form');
+    if (authForm) authForm.reset(); 
+    
+    showAuthMessage("Account created successfully! Logging you in...", false); 
+    setTimeout(() => {
+        localStorage.setItem('currentUserId', newUser.id); 
+        localStorage.setItem('currentUser', newUser.username); 
+        window.location.href = "index.html";
+    }, 1000);
 }
 
 window.handleSignIn = async function() {
-    const email = document.getElementById('auth-email').value.trim(); 
-    const password = document.getElementById('auth-password').value;
+    const emailInput = document.getElementById('auth-email') || document.getElementById('email');
+    const passwordInput = document.getElementById('auth-password') || document.getElementById('password');
+    if (!emailInput || !passwordInput) return;
+
+    const email = emailInput.value.trim(); 
+    const password = passwordInput.value;
     const { data, error } = await supabaseClient.from('app_users').select('*').eq('email', email).eq('password', password);
-    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
     
+    if (error || !data || data.length === 0) { showAuthMessage("Invalid email or password."); return; }
     localStorage.setItem('currentUserId', data[0].id); 
     localStorage.setItem('currentUser', data[0].username); 
     window.location.href = "index.html";
@@ -119,70 +143,43 @@ window.handleSignIn = async function() {
 window.handleLogout = async function() { 
     localStorage.removeItem('currentUserId'); 
     localStorage.removeItem('currentUser'); 
+    localStorage.removeItem('currentUserRole');
     window.location.href = "index.html"; 
 }
 
 window.updateUIForUser = async function() {
-    const loggedOutUI = document.getElementById('logged-out-ui'); 
-    const loggedInUI = document.getElementById('logged-in-ui');
-    const avatarBtn = document.getElementById('user-avatar-btn'); 
-    const avatarInitial = document.getElementById('avatar-initial');
-    const dropdownUsername = document.getElementById('dropdown-username'); 
-    const navAvatarImg = document.getElementById('nav-avatar-img');
-    
+    const loggedOutUI = document.getElementById('logged-out-ui'); const loggedInUI = document.getElementById('logged-in-ui');
+    const avatarBtn = document.getElementById('user-avatar-btn'); const avatarInitial = document.getElementById('avatar-initial');
+    const dropdownUsername = document.getElementById('dropdown-username'); const navAvatarImg = document.getElementById('nav-avatar-img');
     if (!loggedOutUI || !loggedInUI) return;
     
-    const currentUser = localStorage.getItem('currentUser'); 
-    const currentUserId = localStorage.getItem('currentUserId');
+    const currentUser = localStorage.getItem('currentUser'); const currentUserId = localStorage.getItem('currentUserId');
 
     if (currentUser) {
-        loggedOutUI.style.display = 'none'; 
-        loggedInUI.style.display = 'flex';
-        
-        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; 
-        if (dropdownUsername) dropdownUsername.innerText = currentUser;
+        loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
+        if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; if (dropdownUsername) dropdownUsername.innerText = currentUser;
         
         if (currentUserId) {
-            // Fetch both the avatar and the role from Supabase
             const { data: profile } = await supabaseClient.from('profiles').select('avatar_url, role').eq('user_id', currentUserId).single();
-            
             if (profile) {
-                // Save the role to localStorage so the feed knows if you are an admin
                 localStorage.setItem('currentUserRole', profile.role);
-
-                // Handle Avatar UI
+                
                 if (profile.avatar_url && navAvatarImg) {
-                    if (avatarInitial) avatarInitial.style.display = 'none'; 
-                    navAvatarImg.src = profile.avatar_url; 
-                    navAvatarImg.style.display = 'block';
-                    if (avatarBtn) { 
-                        avatarBtn.style.backgroundColor = 'transparent'; 
-                        avatarBtn.style.border = '2px solid #22c55e'; 
-                    }
+                    if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
+                    if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
                 } else {
                     if (navAvatarImg) navAvatarImg.style.display = 'none';
-                    if (avatarInitial) { 
-                        avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); 
-                        avatarInitial.style.display = 'flex'; 
-                        if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); 
-                    }
+                    if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'flex'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
                 }
 
-                // Handle Admin Dashboard Link visibility
                 const adminLink = document.getElementById('admin-dashboard-link');
                 if (adminLink) {
-                    if (profile.role === 'admin' || profile.role === 'super_admin') {
-                        adminLink.style.display = 'block'; 
-                    } else {
-                        adminLink.style.display = 'none';
-                    }
+                    if (profile.role === 'admin' || profile.role === 'super_admin') { adminLink.style.display = 'block'; } 
+                    else { adminLink.style.display = 'none'; }
                 }
             }
         }
-    } else { 
-        loggedOutUI.style.display = 'block'; 
-        loggedInUI.style.display = 'none'; 
-    }
+    } else { loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none'; }
 }
 
 window.toggleDropdown = function(event) {
@@ -198,13 +195,11 @@ window.toggleConnectionsDropdown = function(event) {
     const userDropdown = document.getElementById('user-dropdown'); 
     const connDropdown = document.getElementById('connections-dropdown'); 
     const inboxDropdown = document.getElementById('inbox-dropdown');
-    
     if (userDropdown) userDropdown.classList.remove('show'); 
     if (inboxDropdown) inboxDropdown.classList.remove('show');
-    
     if (connDropdown) { 
         connDropdown.classList.toggle('show'); 
-        if (connDropdown.classList.contains('show') && document.getElementById('connection-search').value === '') {
+        if (connDropdown.classList.contains('show') && document.getElementById('connection-search') && document.getElementById('connection-search').value === '') {
             if (typeof loadTopConnections === 'function') loadTopConnections();
         }
     }
@@ -229,12 +224,10 @@ function animateCarouselScroll(track) {
     if (!isCarouselAnimating) {
         isCarouselAnimating = true;
         track.style.scrollBehavior = 'auto'; 
-        
         const animate = () => {
             const distance = carouselTargetScroll - track.scrollLeft;
             if (Math.abs(distance) < 1) {
-                track.scrollLeft = carouselTargetScroll;
-                isCarouselAnimating = false;
+                track.scrollLeft = carouselTargetScroll; isCarouselAnimating = false;
                 if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
                 return;
             }
@@ -263,16 +256,13 @@ async function loadSkills() {
 
     const userIds = [...new Set(rawSkills.map(s => s.user_id))];
     const { data: users } = await supabaseClient.from('app_users').select('id, username, profiles(avatar_url)').in('id', userIds);
-
-    const userMap = {};
-    if (users) users.forEach(u => userMap[u.id] = u);
+    const userMap = {}; if (users) users.forEach(u => userMap[u.id] = u);
 
     carouselTrack.innerHTML = rawSkills.map(skill => {
         const u = userMap[skill.user_id] || { username: 'Unknown' };
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
 
-        // Determine which delete function to run
         const deleteAction = isAdmin && !isOwner ? `adminDeletePost(event, ${skill.id})` : `deletePost(event, ${skill.id})`;
 
         return `
@@ -306,7 +296,6 @@ async function loadSkills() {
     if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
 }
 
-// Admin direct delete from feed
 window.adminDeletePost = async function(event, postId) {
     event.stopPropagation(); 
     if(confirm("Admin: Are you sure you want to remove this post from the public feed?")) {
@@ -351,22 +340,13 @@ window.togglePostMenu = function(event, postId) {
     const menu = document.getElementById(`post-menu-${postId}`);
     if (menu) menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }
+
 window.deletePost = async function(event, postId) {
     event.stopPropagation(); await supabaseClient.from('skills').delete().eq('id', postId); loadSkills(); 
     if (document.getElementById('profile-page-name')) loadUserProfile();
 }
-window.reportPost = function(event, postId) { event.stopPropagation(); document.getElementById(`post-menu-${postId}`).style.display = 'none'; }
 
 // --- SKILL DEEP DIVE MODAL ---
-async function checkConnectionStatus(userA, userB) {
-    if(userA == userB) return 'self';
-    const { data } = await supabaseClient.from('connections').select('status, requester_id').or(`and(requester_id.eq.${userA},receiver_id.eq.${userB}),and(requester_id.eq.${userB},receiver_id.eq.${userA})`).single();
-    if(!data) return 'none';
-    if(data.status === 'accepted') return 'accepted';
-    if(data.requester_id == userA) return 'pending_sent';
-    return 'pending_received';
-}
-
 async function openSkillDetailModal(skillId) {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = "auth.html"; return; }
@@ -382,25 +362,13 @@ async function openSkillDetailModal(skillId) {
     const { data: currentProfile } = await supabaseClient.from('profiles').select('is_available').eq('user_id', currentUserId).single();
     const amIAvailable = currentProfile ? currentProfile.is_available : true;
 
-    // Check if an offer already exists from ME for this post
-    const { data: existingOffer } = await supabaseClient.from('swap_requests')
-        .select('status')
-        .eq('requester_id', currentUserId)
-        .eq('skill_id', skillId)
-        .single();
+    const { data: existingOffer } = await supabaseClient.from('swap_requests').select('status').eq('requester_id', currentUserId).eq('skill_id', skillId).single();
 
-    let actionBtnHtml = '';
-    let ownerOffersHtml = '';
+    let actionBtnHtml = ''; let ownerOffersHtml = '';
 
-    // Logic if I am the OWNER of the post
     if (skill.user_id == currentUserId) {
         actionBtnHtml = `<span style="font-size: 0.75rem; color: #6b7280; font-style: italic;">Your Post</span>`;
-        
-        // Fetch everyone who has applied for my post
-        const { data: pendingOffers } = await supabaseClient.from('swap_requests')
-            .select('id, requester_id, app_users!swap_requests_requester_id_fkey(username, profiles(avatar_url))')
-            .eq('skill_id', skillId)
-            .eq('status', 'pending');
+        const { data: pendingOffers } = await supabaseClient.from('swap_requests').select('id, requester_id, app_users!swap_requests_requester_id_fkey(username, profiles(avatar_url))').eq('skill_id', skillId).eq('status', 'pending');
 
         if (pendingOffers && pendingOffers.length > 0) {
             ownerOffersHtml = `
@@ -410,8 +378,6 @@ async function openSkillDetailModal(skillId) {
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     ${pendingOffers.map(offer => {
                         const requester = offer.app_users;
-                        
-                        // Disable the Accept button if the owner is currently busy
                         const acceptBtnHtml = amIAvailable 
                             ? `<button onclick="handleAcceptOffer(${offer.id}, ${skillId})" class="icon-btn" style="color: #10b981; background: #d1fae5; padding: 6px; border-radius: 6px;" title="Accept"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>`
                             : `<button class="icon-btn" style="color: #9ca3af; background: #f3f4f6; padding: 6px; border-radius: 6px; cursor: not-allowed;" title="Finish current swap first"><i data-lucide="check" style="width: 16px; height: 16px;"></i></button>`;
@@ -431,14 +397,9 @@ async function openSkillDetailModal(skillId) {
                 </div>
             </div>`;
         } else {
-            ownerOffersHtml = `
-            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f3f4f6; text-align: center;">
-                <p style="color: #6b7280; font-size: 0.9rem; margin: 0;">No swap offers yet. Stay tuned!</p>
-            </div>`;
+            ownerOffersHtml = `<div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #f3f4f6; text-align: center;"><p style="color: #6b7280; font-size: 0.9rem; margin: 0;">No swap offers yet. Stay tuned!</p></div>`;
         }
-
     } 
-    // Logic if I am the VIEWER
     else {
         if (!amIAvailable) {
             actionBtnHtml = `<button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; opacity: 0.7; cursor: not-allowed; border: 1px solid #d1d5db;" disabled>Finish Current Swap First</button>`;
@@ -518,52 +479,27 @@ function closeSkillDetailModal() { document.getElementById('skill-detail-modal')
 async function makeSwapOffer(receiverId, skillId, skillTitle) {
     const currentUserId = localStorage.getItem('currentUserId');
     const currentUserName = localStorage.getItem('currentUser');
-
-    const { error: offerError } = await supabaseClient.from('swap_requests').insert([{
-        requester_id: currentUserId, receiver_id: receiverId, skill_id: skillId, status: 'pending'
-    }]);
-
+    const { error: offerError } = await supabaseClient.from('swap_requests').insert([{ requester_id: currentUserId, receiver_id: receiverId, skill_id: skillId, status: 'pending' }]);
     if (offerError) { showToast("Error sending offer."); return; }
-
-    await supabaseClient.from('notifications').insert([{
-        user_id: receiverId, type: 'new_offer', message: `New Swap Offer! ${currentUserName} wants to swap for your skill: "${skillTitle}"`
-    }]);
-
+    await supabaseClient.from('notifications').insert([{ user_id: receiverId, type: 'new_offer', message: `New Swap Offer! ${currentUserName} wants to swap for your skill: "${skillTitle}"` }]);
     showToast("Swap offer sent successfully!");
     openSkillDetailModal(skillId); 
 }
 
 async function handleAcceptOffer(offerId, skillId) {
     showToast("Processing swap...");
-    
-    // Trigger the custom RPC cascade function we built in Supabase
     const { error } = await supabaseClient.rpc('accept_swap_offer', { target_offer_id: offerId });
-    
-    if (error) { 
-        console.error(error); 
-        showToast("Error accepting offer. It may have already been resolved."); 
-        return; 
-    }
-    
+    if (error) { console.error(error); showToast("Error accepting offer. It may have already been resolved."); return; }
     closeSkillDetailModal();
     showToast("Swap Accepted! Check your messages.");
-    
     loadSkills(); 
     if (document.getElementById('profile-page-name')) loadUserProfile(); 
 }
 
 async function handleRejectOffer(offerId, skillId) {
-    // Manually reject the one specific user
     await supabaseClient.from('swap_requests').update({ status: 'rejected' }).eq('id', offerId);
-    
-    // Get their info to send a rejection notice
     const { data: req } = await supabaseClient.from('swap_requests').select('requester_id, skills(title)').eq('id', offerId).single();
-    if(req) {
-        await supabaseClient.from('notifications').insert([{
-            user_id: req.requester_id, type: 'rejected', message: `Your offer for "${req.skills.title}" was declined.`
-        }]);
-    }
-    
+    if(req) { await supabaseClient.from('notifications').insert([{ user_id: req.requester_id, type: 'rejected', message: `Your offer for "${req.skills.title}" was declined.` }]); }
     showToast("Offer rejected.");
     openSkillDetailModal(skillId); 
 }
@@ -572,14 +508,9 @@ async function handleRejectOffer(offerId, skillId) {
 async function checkWantedSkillsBeforePosting() {
     const currentUserId = localStorage.getItem('currentUserId');
     if (!currentUserId) { window.location.href = "auth.html"; return; }
-
     const { data: profile } = await supabaseClient.from('profiles').select('wanted_skills').eq('user_id', currentUserId).single();
-    
-    if (!profile || !profile.wanted_skills || profile.wanted_skills.trim() === "") {
-        document.getElementById('warning-modal').style.display = 'flex';
-    } else {
-        openPostSkillModalForm();
-    }
+    if (!profile || !profile.wanted_skills || profile.wanted_skills.trim() === "") { document.getElementById('warning-modal').style.display = 'flex'; } 
+    else { openPostSkillModalForm(); }
 }
 function closeWarningModal() { document.getElementById('warning-modal').style.display = 'none'; }
 function continueToPostSkill() { closeWarningModal(); openPostSkillModalForm(); }
@@ -751,7 +682,6 @@ async function openChatWithUser(userId, username, avatarUrl) {
     const videoBtn = document.getElementById('video-call-btn');
     if (videoBtn) videoBtn.style.display = 'flex';
 
-    // NEW: Check if these two users share an ACTIVE swap, if so, show the "End Swap" button
     const currentUserId = localStorage.getItem('currentUserId');
     const { data: activeSwaps } = await supabaseClient.from('swap_requests')
         .select('id')
@@ -850,7 +780,6 @@ function createMessageHtml(msg, isSender) {
         maxW = '85%';
         rightClickEvent = ''; 
     }
-    // NEW: Handle the Swap End Request logic
     else if (msg.content === '[SWAP_END_REQUEST]') {
         if (isSender) {
             contentHtml = `<div style="display:flex; flex-direction:column; align-items:center; gap:8px; font-weight: 500; color: #4b5563; text-align:center;">
@@ -869,7 +798,6 @@ function createMessageHtml(msg, isSender) {
         metaHtml = '';
         rightClickEvent = '';
     }
-    // NEW: Handle the Success message when the swap is completed
     else if (msg.content === '[SWAP_ENDED]') {
         contentHtml = `<div style="display:flex; align-items:center; justify-content: center; gap:8px; font-weight: 600; color: #059669;">
                         <i data-lucide="party-popper" style="width:18px; height:18px;"></i> Swap Officially Completed! You are both free to make new offers.
@@ -922,7 +850,6 @@ async function sendChatMessage() {
     loadChatConnections();
 }
 
-// NEW: Request End Swap action
 async function requestEndSwap() {
     const currentUserId = localStorage.getItem('currentUserId');
     if(!currentUserId || !currentChatUserId) return;
@@ -931,35 +858,53 @@ async function requestEndSwap() {
         sender_id: currentUserId, receiver_id: currentChatUserId, content: '[SWAP_END_REQUEST]'
     }]);
     
-    document.getElementById('end-swap-btn').style.display = 'none'; // Hide locally so they don't spam it
+    document.getElementById('end-swap-btn').style.display = 'none';
     loadChatMessages(currentChatUserId);
     loadChatConnections();
 }
 
-// NEW: Confirm End Swap action (Triggered by the partner)
 async function confirmEndSwap(msgId, partnerId) {
     const currentUserId = localStorage.getItem('currentUserId');
     
-    // 1. Update the database to mark swap as 'completed'
+    const { data: swapArray } = await supabaseClient.from('swap_requests')
+        .select('skill_id, skills(title, user_id)')
+        .eq('status', 'accepted')
+        .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
+
+    if (swapArray && swapArray.length > 0) {
+        const swapData = swapArray[0];
+        if (swapData.skills) {
+            const skillTitle = swapData.skills.title;
+            const ownerId = swapData.skills.user_id;
+
+            const { data: ownerProfile } = await supabaseClient.from('profiles').select('trophy_skills').eq('user_id', ownerId).single();
+            let trophies = ownerProfile && ownerProfile.trophy_skills ? ownerProfile.trophy_skills.split(',').map(s => s.trim()) : [];
+
+            if (!trophies.includes(skillTitle)) {
+                trophies.push(skillTitle);
+                await supabaseClient.from('profiles').update({ trophy_skills: trophies.join(', ') }).eq('user_id', ownerId);
+            }
+        }
+    }
+
     await supabaseClient.from('swap_requests')
         .update({ status: 'completed' })
         .eq('status', 'accepted')
         .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${partnerId}),and(requester_id.eq.${partnerId},receiver_id.eq.${currentUserId})`);
         
-    // 2. Free up BOTH users' availability
     await supabaseClient.from('profiles')
         .update({ is_available: true })
         .in('user_id', [currentUserId, partnerId]);
 
-    // 3. Mark the "Request" message as deleted so the button vanishes
     await supabaseClient.from('messages').update({ is_deleted: true }).eq('id', msgId);
     
-    // 4. Send the global "Swap Completed" banner message
     await supabaseClient.from('messages').insert([{
         sender_id: currentUserId, receiver_id: partnerId, content: '[SWAP_ENDED]'
     }]);
     
-    document.getElementById('end-swap-btn').style.display = 'none';
+    const endBtn = document.getElementById('end-swap-btn');
+    if (endBtn) endBtn.style.display = 'none';
+    
     loadChatMessages(partnerId);
     loadChatConnections();
 }
@@ -1101,26 +1046,8 @@ async function connectWithUser(receiverId) {
 async function updateRequestsBadge() {
     const currentUserId = localStorage.getItem('currentUserId'); if (!currentUserId) return;
     const { count } = await supabaseClient.from('connections').select('*', { count: 'exact', head: true }).eq('receiver_id', currentUserId).eq('status', 'pending');
-    
-    const dropBadge = document.getElementById('requests-badge');
-    if (dropBadge) { 
-        if (count > 0) { 
-            dropBadge.innerText = count > 99 ? '99+' : count; 
-            dropBadge.style.display = 'inline-block'; 
-        } else { 
-            dropBadge.style.display = 'none'; 
-        } 
-    }
-    
-    const navBadge = document.getElementById('network-badge');
-    if (navBadge) {
-        if (count > 0) { 
-            navBadge.innerText = count > 99 ? '99+' : count; 
-            navBadge.style.display = 'flex'; 
-        } else { 
-            navBadge.style.display = 'none'; 
-        } 
-    }
+    const badge = document.getElementById('requests-badge');
+    if (badge) { if (count > 0) { badge.innerText = count; badge.style.display = 'inline-block'; } else { badge.style.display = 'none'; } }
 }
 
 async function openRequestsModal() {
@@ -1150,7 +1077,6 @@ async function openManageConnectionsModal() {
 }
 function closeManageConnectionsModal() { document.getElementById('manage-connections-modal').style.display = 'none'; }
 async function removeConnection(connectionId) { await supabaseClient.from('connections').delete().eq('id', connectionId); openManageConnectionsModal(); loadTopConnections(); const searchInput = document.getElementById('connection-search'); if (searchInput && searchInput.value.trim() !== '') searchUsers({ target: searchInput }); }
-
 
 // ==========================================
 // 7. PRIVATE PROFILE PAGE LOGIC
@@ -1307,11 +1233,9 @@ async function loadPublicProfile() {
         const bannerImg = document.getElementById('public-banner-img'); if (profile.banner_url) { bannerImg.style.display = 'block'; bannerImg.src = profile.banner_url; bannerImg.parentElement.style.backgroundColor = 'transparent'; } else { bannerImg.style.display = 'none'; bannerImg.parentElement.style.backgroundColor = '#d1d5db'; }
         const imgElement = document.getElementById('public-avatar-img'); if (profile.avatar_url) { document.getElementById('public-page-initial').style.display = 'none'; imgElement.style.display = 'block'; imgElement.src = profile.avatar_url; } else { imgElement.style.display = 'none'; }
         
-        // 1. Fetch explicitly active posts
         const { data: activePosts } = await supabaseClient.from('skills').select('title').eq('user_id', targetUserId).eq('is_active', true); 
         let activeSkillNames = activePosts ? activePosts.map(p => p.title.toLowerCase()) : [];
 
-        // 2. Fetch ongoing swaps
         const { data: ongoingSwaps } = await supabaseClient.from('swap_requests')
             .select('skills(title)')
             .eq('status', 'accepted')
@@ -1776,7 +1700,6 @@ function updateVideoLayout() {
         if (!allBoxes.includes(wbContainer)) allBoxes.push(wbContainer);
     } else {
         wbContainer.style.display = 'none';
-        // Safe removal from layout array, leaving it safely attached to HTML
         allBoxes = allBoxes.filter(b => b !== wbContainer);
         const centerStage = document.getElementById('center-stage');
         if (wbContainer.parentElement !== centerStage) {
@@ -1795,7 +1718,6 @@ function updateVideoLayout() {
         sidebarZone.style.display = 'flex';
         defaultZone.style.display = 'none';
 
-        // Clean query to grab only layout items, ignoring internal wrapper divs
         let heroes = Array.from(centerStage.children).filter(child => 
             child.id === 'local-screen-preview' || 
             child.id === 'whiteboard-container' || 
@@ -2480,7 +2402,6 @@ window.addEventListener('beforeunload', function (e) {
     }
 });
 
-
 // ==========================================
 // 16. INBOX & NOTIFICATIONS LOGIC
 // ==========================================
@@ -2585,38 +2506,6 @@ window.addEventListener('click', function(event) {
     }
 });
 
-async function updateInboxBadge() {
-    const currentUserId = localStorage.getItem('currentUserId');
-    if (!currentUserId) return;
-
-    const { count } = await supabaseClient.from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', currentUserId)
-        .eq('is_read', false);
-
-    const badge = document.getElementById('inbox-badge');
-    if (badge) {
-        if (count > 0) { badge.style.display = 'block'; } 
-        else { badge.style.display = 'none'; }
-    }
-}
-
-async function markInboxRead() {
-    const currentUserId = localStorage.getItem('currentUserId');
-    await supabaseClient.from('notifications').update({ is_read: true }).eq('user_id', currentUserId).eq('is_read', false);
-    updateInboxBadge();
-    loadInboxNotifications();
-}
-
-window.addEventListener('click', function(event) {
-    const inboxDropdown = document.getElementById('inbox-dropdown');
-    if (inboxDropdown && inboxDropdown.classList.contains('show') && !event.target.closest('#inbox-dropdown') && !event.target.closest('button[title="Notifications"]')) {
-        inboxDropdown.classList.remove('show');
-    }
-});
-function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
-
-
 
 // ==========================================
 // 17. ADMIN & MODERATION SYSTEM
@@ -2641,17 +2530,14 @@ async function checkAdminAccess() {
 
 let currentReportSkillId = null;
 
-// Opens the custom report modal
 window.reportPost = function(event, skillId) { 
     event.stopPropagation(); 
     
-    // Hide the 3-dot dropdown menu
     const menu = document.getElementById(`post-menu-${skillId}`);
     if (menu) menu.style.display = 'none'; 
     
     currentReportSkillId = skillId;
     
-    // Reset the modal inputs so they are fresh every time
     const select = document.getElementById('report-reason-select');
     const text = document.getElementById('report-reason-text');
     if(select) select.value = '';
@@ -2660,18 +2546,16 @@ window.reportPost = function(event, skillId) {
     const modal = document.getElementById('report-modal');
     if(modal) {
         modal.style.display = 'flex';
-        lucide.createIcons(); // Ensure the flag icon loads
+        lucide.createIcons();
     }
 }
 
-// Closes the modal
 window.closeReportModal = function() {
     const modal = document.getElementById('report-modal');
     if(modal) modal.style.display = 'none';
     currentReportSkillId = null;
 }
 
-// Shows the text box only if they select "Other"
 window.toggleReportOtherReason = function() {
     const select = document.getElementById('report-reason-select');
     const text = document.getElementById('report-reason-text');
@@ -2684,7 +2568,6 @@ window.toggleReportOtherReason = function() {
     }
 }
 
-// Submits the report to the Supabase database
 window.submitReport = async function() {
     if (!currentReportSkillId) return;
 
@@ -2693,7 +2576,6 @@ window.submitReport = async function() {
     
     let reason = select ? select.value : '';
     
-    // If they picked 'Other', grab the text from the text area
     if (reason === 'Other' && text) {
         reason = text.value.trim();
     }
@@ -2720,9 +2602,6 @@ window.submitReport = async function() {
     closeReportModal();
 }
 
-// ------------------------------------------
-// ADMIN DASHBOARD SPECIFIC LOGIC
-// ------------------------------------------
 window.initAdminDashboard = async function() {
     const hasAccess = await checkAdminAccess();
     if (!hasAccess) {
@@ -2760,7 +2639,6 @@ window.switchAdminTab = function(tabName) {
     }
 }
 
-// Load Pending Reports
 async function loadAdminReports() {
     const container = document.getElementById('admin-reports-container');
     if (!container) return;
@@ -2780,7 +2658,7 @@ async function loadAdminReports() {
     }
 
     container.innerHTML = reports.map(report => {
-        if (!report.skill) return ''; // Skill was already deleted
+        if (!report.skill) return '';
 
         return `
         <div style="border: 1px solid #fee2e2; border-radius: 8px; padding: 15px; background: #fffcfc;">
@@ -2806,13 +2684,8 @@ async function loadAdminReports() {
 
 window.resolveReport = async function(reportId, skillId) {
     if(confirm("Are you sure you want to remove this skill post from the public feed?")) {
-        // "Soft delete" it by setting is_active to false. 
-        // This hides it from the feed without breaking database foreign keys!
         await supabaseClient.from('skills').update({ is_active: false }).eq('id', skillId);
-        
-        // Mark the report as resolved so it disappears from this admin queue
         await supabaseClient.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-        
         loadAdminReports();
         showToast("Post removed from feed and report resolved.");
     }
@@ -2824,11 +2697,13 @@ window.dismissReport = async function(reportId) {
     showToast("Report dismissed.");
 }
 
-// Load Users for Moderation
 async function loadAdminUsers() {
     const tableBody = document.getElementById('admin-users-table');
-    const searchVal = document.getElementById('admin-user-search').value.trim();
     if (!tableBody) return;
+    
+    // Fixed: Ensure the search input exists before checking its value
+    const searchInput = document.getElementById('admin-user-search');
+    const searchVal = searchInput ? searchInput.value.trim() : '';
 
     let query = supabaseClient.from('app_users').select('id, username, profiles(role)');
     if (searchVal) query = query.ilike('username', `%${searchVal}%`);
@@ -2849,7 +2724,6 @@ async function loadAdminUsers() {
 
         let actionHtml = `<button onclick="viewAdminNetwork(${user.id}, '${user.username}')" class="btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">View Network</button>`;
 
-        // Super Admin Powers
         if (currentAdminRole === 'super_admin') {
             if (role === 'user') {
                 actionHtml += `<button onclick="changeUserRole(${user.id}, 'admin')" class="btn-primary" style="padding: 4px 10px; font-size: 0.75rem; margin-left: 8px;">Promote</button>`;
