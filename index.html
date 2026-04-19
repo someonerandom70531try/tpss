@@ -202,7 +202,38 @@
             <div id="manage-connections-list" style="max-height: 60vh; overflow-y: auto;"></div>
         </div>
     </div>
-
+<div id="report-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 450px; width: 95%;">
+            <div class="flex-row-between" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #111827; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="flag" style="width: 20px; height: 20px; color: #ef4444;"></i> Report Post
+                </h3>
+                <button onclick="closeReportModal()" class="icon-btn" style="color: #6b7280;">
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
+                </button>
+            </div>
+            
+            <p style="color: #4b5563; font-size: 0.95rem; margin-bottom: 15px;">Please tell us why you are reporting this skill post. Our moderation team will review it shortly.</p>
+            
+            <div style="text-align: left; margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; font-weight: 500;">Reason for reporting</label>
+                <select id="report-reason-select" class="modal-input" style="margin-top: 0; background: white; cursor: pointer; margin-bottom: 10px;" onchange="toggleReportOtherReason()">
+                    <option value="">-- Select a reason --</option>
+                    <option value="Spam or promotional">Spam or promotional</option>
+                    <option value="Inappropriate content">Inappropriate content</option>
+                    <option value="Off-topic for Skill Swap">Off-topic for Skill Swap</option>
+                    <option value="Fake or scam">Fake or scam</option>
+                    <option value="Other">Other (Please specify)</option>
+                </select>
+                <textarea id="report-reason-text" class="modal-input" rows="3" placeholder="Provide more details..." style="margin-top: 0; display: none;"></textarea>
+            </div>
+            
+            <div class="modal-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeReportModal()" class="btn-secondary" style="padding: 8px 16px; background: white; border-radius: 6px; cursor: pointer; border: 1px solid #d1d5db;">Cancel</button>
+                <button onclick="submitReport()" class="btn-primary" style="padding: 8px 16px; background-color: #ef4444; border: none;">Submit Report</button>
+            </div>
+        </div>
+    </div>
     <script src="script.js"></script>
     <script>lucide.createIcons();</script>
 </body>
