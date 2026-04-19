@@ -2520,3 +2520,228 @@ window.addEventListener('click', function(event) {
     }
 });
 function closeAllCertsModal() { document.getElementById('all-certs-modal').style.display = 'none'; }
+
+
+
+// ==========================================
+// 17. ADMIN & MODERATION SYSTEM
+// ==========================================
+let currentAdminRole = null;
+
+async function checkAdminAccess() {
+    const currentUserId = localStorage.getItem('currentUserId');
+    if (!currentUserId) return false;
+
+    const { data: profile } = await supabaseClient.from('profiles')
+        .select('role')
+        .eq('user_id', currentUserId)
+        .single();
+
+    if (profile && (profile.role === 'admin' || profile.role === 'super_admin')) {
+        currentAdminRole = profile.role;
+        return true;
+    }
+    return false;
+}
+
+// Override the empty reportPost function from Section 2
+window.reportPost = async function(event, skillId) { 
+    event.stopPropagation(); 
+    document.getElementById(`post-menu-${skillId}`).style.display = 'none'; 
+    
+    const reason = prompt("Why are you reporting this post? (e.g., Spam, Inappropriate content, Off-topic)");
+    if (!reason || reason.trim() === "") return;
+
+    const currentUserId = localStorage.getItem('currentUserId');
+    const { error } = await supabaseClient.from('reports').insert([{
+        reporter_id: currentUserId,
+        reported_skill_id: skillId,
+        reason: reason,
+        status: 'pending'
+    }]);
+
+    if (error) {
+        showToast("Error submitting report.");
+    } else {
+        showToast("Report submitted to moderation team.");
+    }
+}
+
+// ------------------------------------------
+// ADMIN DASHBOARD SPECIFIC LOGIC
+// ------------------------------------------
+window.initAdminDashboard = async function() {
+    const hasAccess = await checkAdminAccess();
+    if (!hasAccess) {
+        alert("Access Denied. You do not have administrator privileges.");
+        window.location.href = "index.html";
+        return;
+    }
+
+    const badge = document.getElementById('admin-role-badge');
+    if (badge) badge.innerText = currentAdminRole.replace('_', ' ');
+
+    loadAdminReports();
+    loadAdminUsers();
+}
+
+window.switchAdminTab = function(tabName) {
+    const reportsBtn = document.getElementById('tab-reports');
+    const usersBtn = document.getElementById('tab-users');
+    const reportsSec = document.getElementById('section-reports');
+    const usersSec = document.getElementById('section-users');
+
+    reportsBtn.style.background = 'transparent'; reportsBtn.style.color = '#4b5563';
+    usersBtn.style.background = 'transparent'; usersBtn.style.color = '#4b5563';
+    reportsSec.style.display = 'none';
+    usersSec.style.display = 'none';
+
+    if (tabName === 'reports') {
+        reportsBtn.style.background = '#e0e7ff'; reportsBtn.style.color = '#4f46e5';
+        reportsSec.style.display = 'block';
+        loadAdminReports();
+    } else {
+        usersBtn.style.background = '#e0e7ff'; usersBtn.style.color = '#4f46e5';
+        usersSec.style.display = 'block';
+        loadAdminUsers();
+    }
+}
+
+// Load Pending Reports
+async function loadAdminReports() {
+    const container = document.getElementById('admin-reports-container');
+    if (!container) return;
+
+    const { data: reports } = await supabaseClient.from('reports')
+        .select(`
+            id, reason, created_at,
+            reporter:app_users!reports_reporter_id_fkey(username),
+            skill:skills!reports_reported_skill_id_fkey(id, title, description, app_users!skills_user_id_fkey(username))
+        `)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+    if (!reports || reports.length === 0) {
+        container.innerHTML = `<p style="color: #6b7280; text-align: center; padding: 40px;">No pending reports.</p>`;
+        return;
+    }
+
+    container.innerHTML = reports.map(report => {
+        if (!report.skill) return ''; // Skill was already deleted
+
+        return `
+        <div style="border: 1px solid #fee2e2; border-radius: 8px; padding: 15px; background: #fffcfc;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div>
+                    <span style="background: #fef2f2; color: #ef4444; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Reported Skill</span>
+                    <h4 style="margin: 8px 0 4px 0; color: #111827;">${report.skill.title}</h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: #6b7280;">Posted by: <strong>${report.skill.app_users.username}</strong></p>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button onclick="resolveReport(${report.id}, ${report.skill.id})" class="btn-primary" style="background: #ef4444; border: none; padding: 6px 12px; font-size: 0.8rem;">Delete Post</button>
+                    <button onclick="dismissReport(${report.id})" class="btn-secondary" style="border: 1px solid #d1d5db; background: white; padding: 6px 12px; font-size: 0.8rem;">Dismiss</button>
+                </div>
+            </div>
+            <div style="background: white; border: 1px solid #e5e7eb; padding: 10px; border-radius: 6px; font-size: 0.9rem; color: #4b5563; margin-bottom: 10px;">
+                <em>" ${report.skill.description} "</em>
+            </div>
+            <p style="margin: 0; font-size: 0.85rem; color: #374151;"><strong>Reason:</strong> ${report.reason} <span style="color: #9ca3af; font-size: 0.75rem;">(Reported by ${report.reporter.username})</span></p>
+        </div>
+        `;
+    }).join('');
+}
+
+window.resolveReport = async function(reportId, skillId) {
+    if(confirm("Are you sure you want to permanently delete this skill post?")) {
+        // Delete the skill
+        await supabaseClient.from('skills').delete().eq('id', skillId);
+        // Mark report as resolved
+        await supabaseClient.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+        loadAdminReports();
+        showToast("Post deleted and report resolved.");
+    }
+}
+
+window.dismissReport = async function(reportId) {
+    await supabaseClient.from('reports').update({ status: 'dismissed' }).eq('id', reportId);
+    loadAdminReports();
+    showToast("Report dismissed.");
+}
+
+// Load Users for Moderation
+async function loadAdminUsers() {
+    const tableBody = document.getElementById('admin-users-table');
+    const searchVal = document.getElementById('admin-user-search').value.trim();
+    if (!tableBody) return;
+
+    let query = supabaseClient.from('app_users').select('id, username, profiles(role)');
+    if (searchVal) query = query.ilike('username', `%${searchVal}%`);
+
+    const { data: users } = await query.order('username', { ascending: true }).limit(20);
+
+    if (!users || users.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #6b7280;">No users found.</td></tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = users.map(user => {
+        const role = user.profiles ? (Array.isArray(user.profiles) ? user.profiles[0]?.role : user.profiles.role) : 'user';
+        
+        let roleBadge = `<span style="background: #f3f4f6; color: #4b5563; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">User</span>`;
+        if (role === 'admin') roleBadge = `<span style="background: #e0e7ff; color: #4f46e5; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Admin</span>`;
+        if (role === 'super_admin') roleBadge = `<span style="background: #fce7f3; color: #be185d; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Super Admin</span>`;
+
+        let actionHtml = `<button onclick="viewAdminNetwork(${user.id}, '${user.username}')" class="btn-outline" style="padding: 4px 10px; font-size: 0.75rem;">View Network</button>`;
+
+        // Super Admin Powers
+        if (currentAdminRole === 'super_admin') {
+            if (role === 'user') {
+                actionHtml += `<button onclick="changeUserRole(${user.id}, 'admin')" class="btn-primary" style="padding: 4px 10px; font-size: 0.75rem; margin-left: 8px;">Promote</button>`;
+            } else if (role === 'admin') {
+                actionHtml += `<button onclick="changeUserRole(${user.id}, 'user')" class="btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border: 1px solid #d1d5db; background: white; margin-left: 8px;">Demote</button>`;
+            }
+        }
+
+        return `
+        <tr style="border-bottom: 1px solid #f3f4f6;">
+            <td style="padding: 12px 15px; color: #111827; font-weight: 500;">${user.username}</td>
+            <td style="padding: 12px 15px;">${roleBadge}</td>
+            <td style="padding: 12px 15px;">${actionHtml}</td>
+        </tr>
+        `;
+    }).join('');
+}
+
+window.changeUserRole = async function(targetUserId, newRole) {
+    if(confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
+        await supabaseClient.from('profiles').update({ role: newRole }).eq('user_id', targetUserId);
+        loadAdminUsers();
+        showToast(`User role updated to ${newRole}.`);
+    }
+}
+
+window.viewAdminNetwork = async function(targetId, targetName) {
+    document.getElementById('network-modal-title').innerText = `${targetName}'s Network`;
+    const list = document.getElementById('admin-network-list');
+    list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px;">Loading...</p>`;
+    document.getElementById('admin-network-modal').style.display = 'flex';
+
+    const { data: connections } = await supabaseClient.from('connections').select('requester_id, receiver_id').eq('status', 'accepted').or(`requester_id.eq.${targetId},receiver_id.eq.${targetId}`);
+    
+    if (!connections || connections.length === 0) {
+        list.innerHTML = `<p style="text-align:center; color:#6b7280; padding: 20px;">No connections.</p>`;
+        return;
+    }
+
+    const connectedUserIds = connections.map(conn => conn.requester_id == targetId ? conn.receiver_id : conn.requester_id);
+    const { data: users } = await supabaseClient.from('app_users').select(`id, username, profiles(avatar_url)`).in('id', connectedUserIds);
+
+    list.innerHTML = users.map(u => `
+        <div class="connection-item">
+            <div class="connection-user-info">
+                ${getAvatarHtml(u)}
+                <span style="font-size: 0.9rem; font-weight: 500; color: #111827;">${u.username}</span>
+            </div>
+        </div>
+    `).join('');
+}
