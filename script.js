@@ -122,6 +122,15 @@ window.handleLogout = async function() {
 }
 
 window.updateUIForUser = async function() {
+    // Inside window.updateUIForUser...
+            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url, role').eq('user_id', currentUserId).single();
+            
+            if (profile) {
+                // ADD THIS LINE: Save the role so the public feed knows you are an admin
+                localStorage.setItem('currentUserRole', profile.role);
+
+                if (profile.avatar_url && navAvatarImg) {
+// ... rest of the function remains the same
     const loggedOutUI = document.getElementById('logged-out-ui'); const loggedInUI = document.getElementById('logged-in-ui');
     const avatarBtn = document.getElementById('user-avatar-btn'); const avatarInitial = document.getElementById('avatar-initial');
     const dropdownUsername = document.getElementById('dropdown-username'); const navAvatarImg = document.getElementById('nav-avatar-img');
@@ -225,6 +234,9 @@ async function loadSkills() {
     if (!carouselTrack) return; 
 
     const currentUserId = localStorage.getItem('currentUserId');
+    const currentUserRole = localStorage.getItem('currentUserRole');
+    const isAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin';
+
     const { data: rawSkills } = await supabaseClient.from('skills').select('*').eq('is_active', true).order('created_at', { ascending: false });
     
     if (!rawSkills || rawSkills.length === 0) {
@@ -244,6 +256,9 @@ async function loadSkills() {
         const shortDesc = skill.description.length > 80 ? skill.description.substring(0, 80) + '...' : skill.description;
         const isOwner = skill.user_id == currentUserId;
 
+        // Determine which delete function to run
+        const deleteAction = isAdmin && !isOwner ? `adminDeletePost(event, ${skill.id})` : `deletePost(event, ${skill.id})`;
+
         return `
         <div style="border: 1px solid #e5e7eb; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); background: white; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'" onclick="openSkillDetailModal(${skill.id})">
             <div>
@@ -252,8 +267,8 @@ async function loadSkills() {
                     <div style="position: relative;">
                         <button onclick="togglePostMenu(event, ${skill.id})" class="icon-btn" style="padding: 4px; margin: -4px;"><i data-lucide="more-horizontal" style="width: 20px; height: 20px; color: #9ca3af;"></i></button>
                         <div id="post-menu-${skill.id}" class="post-options-menu dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; width: 140px; padding: 5px; z-index: 20; cursor: default; margin-top: 5px;">
-                            ${isOwner ? `<button onclick="deletePost(event, ${skill.id})" style="width: 100%; text-align: left; color: #ef4444; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#fee2e2'" onmouseout="this.style.backgroundColor='transparent'">Remove Post</button>` : ''}
-                            <button onclick="reportPost(event, ${skill.id})" style="width: 100%; text-align: left; color: #4b5563; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">Report</button>
+                            ${(isOwner || isAdmin) ? `<button onclick="${deleteAction}" style="width: 100%; text-align: left; color: #ef4444; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#fee2e2'" onmouseout="this.style.backgroundColor='transparent'">Remove Post</button>` : ''}
+                            ${!isOwner ? `<button onclick="reportPost(event, ${skill.id})" style="width: 100%; text-align: left; color: #4b5563; background: none; border: none; padding: 8px 12px; cursor: pointer; font-size: 0.85rem; border-radius: 4px;" onmouseover="this.style.backgroundColor='#f3f4f6'" onmouseout="this.style.backgroundColor='transparent'">Report</button>` : ''}
                         </div>
                     </div>
                 </div>
@@ -273,6 +288,16 @@ async function loadSkills() {
     
     lucide.createIcons();
     if(typeof updateCarouselArrows === 'function') updateCarouselArrows();
+}
+
+// Admin direct delete from feed
+window.adminDeletePost = async function(event, postId) {
+    event.stopPropagation(); 
+    if(confirm("Admin: Are you sure you want to remove this post from the public feed?")) {
+        await supabaseClient.from('skills').update({ is_active: false }).eq('id', postId);
+        loadSkills(); 
+        showToast("Post removed by Admin.");
+    }
 }
 
 window.scrollCarousel = function(direction) {
@@ -2467,6 +2492,15 @@ async function loadInboxNotifications() {
     
     list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#6b7280; margin: 0;">Loading...</p>`;
     
+    // CLEANUP: Delete any 'read' notifications that are older than 24 hours
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await supabaseClient.from('notifications')
+        .delete()
+        .eq('user_id', currentUserId)
+        .eq('is_read', true)
+        .lt('created_at', oneDayAgo);
+    
+    // Fetch remaining notifications
     const { data: notifications } = await supabaseClient.from('notifications')
         .select('*')
         .eq('user_id', currentUserId)
@@ -2477,6 +2511,33 @@ async function loadInboxNotifications() {
         list.innerHTML = `<p style="text-align:center; font-size:0.85rem; color:#9ca3af; margin: 0; padding: 20px 0;">No new notifications</p>`;
         return;
     }
+    
+    list.innerHTML = notifications.map(notif => {
+        let icon = 'bell';
+        let color = '#6b7280';
+        let bg = '#f3f4f6';
+        
+        if (notif.type === 'new_offer') { icon = 'inbox'; color = '#3b82f6'; bg = '#dbeafe'; }
+        if (notif.type === 'accepted') { icon = 'check-circle'; color = '#10b981'; bg = '#d1fae5'; }
+        if (notif.type === 'rejected') { icon = 'x-circle'; color = '#ef4444'; bg = '#fee2e2'; }
+        
+        const isUnread = !notif.is_read ? 'border-left: 3px solid #8b5cf6;' : 'border-left: 3px solid transparent;';
+        const date = new Date(notif.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
+        
+        return `
+        <div style="${isUnread} background: #f9fafb; padding: 12px; border-radius: 6px; display: flex; gap: 12px; align-items: flex-start;">
+            <div style="background: ${bg}; color: ${color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <i data-lucide="${icon}" style="width: 16px; height: 16px;"></i>
+            </div>
+            <div>
+                <p style="margin: 0 0 4px 0; font-size: 0.85rem; color: #111827; line-height: 1.4;">${notif.message}</p>
+                <span style="font-size: 0.7rem; color: #9ca3af;">${date}</span>
+            </div>
+        </div>`;
+    }).join('');
+    
+    lucide.createIcons();
+}
     
     list.innerHTML = notifications.map(notif => {
         let icon = 'bell';
