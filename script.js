@@ -2559,18 +2559,74 @@ async function checkAdminAccess() {
     return false;
 }
 
-// Override the empty reportPost function from Section 2
-window.reportPost = async function(event, skillId) { 
+let currentReportSkillId = null;
+
+// Opens the custom report modal
+window.reportPost = function(event, skillId) { 
     event.stopPropagation(); 
-    document.getElementById(`post-menu-${skillId}`).style.display = 'none'; 
     
-    const reason = prompt("Why are you reporting this post? (e.g., Spam, Inappropriate content, Off-topic)");
-    if (!reason || reason.trim() === "") return;
+    // Hide the 3-dot dropdown menu
+    const menu = document.getElementById(`post-menu-${skillId}`);
+    if (menu) menu.style.display = 'none'; 
+    
+    currentReportSkillId = skillId;
+    
+    // Reset the modal inputs so they are fresh every time
+    const select = document.getElementById('report-reason-select');
+    const text = document.getElementById('report-reason-text');
+    if(select) select.value = '';
+    if(text) { text.value = ''; text.style.display = 'none'; }
+    
+    const modal = document.getElementById('report-modal');
+    if(modal) {
+        modal.style.display = 'flex';
+        lucide.createIcons(); // Ensure the flag icon loads
+    }
+}
+
+// Closes the modal
+window.closeReportModal = function() {
+    const modal = document.getElementById('report-modal');
+    if(modal) modal.style.display = 'none';
+    currentReportSkillId = null;
+}
+
+// Shows the text box only if they select "Other"
+window.toggleReportOtherReason = function() {
+    const select = document.getElementById('report-reason-select');
+    const text = document.getElementById('report-reason-text');
+    if (select && text) {
+        if (select.value === 'Other') {
+            text.style.display = 'block';
+        } else {
+            text.style.display = 'none';
+        }
+    }
+}
+
+// Submits the report to the Supabase database
+window.submitReport = async function() {
+    if (!currentReportSkillId) return;
+
+    const select = document.getElementById('report-reason-select');
+    const text = document.getElementById('report-reason-text');
+    
+    let reason = select ? select.value : '';
+    
+    // If they picked 'Other', grab the text from the text area
+    if (reason === 'Other' && text) {
+        reason = text.value.trim();
+    }
+
+    if (!reason || reason.trim() === "") {
+        showToast("Please provide a reason for the report.");
+        return;
+    }
 
     const currentUserId = localStorage.getItem('currentUserId');
     const { error } = await supabaseClient.from('reports').insert([{
         reporter_id: currentUserId,
-        reported_skill_id: skillId,
+        reported_skill_id: currentReportSkillId,
         reason: reason,
         status: 'pending'
     }]);
@@ -2580,6 +2636,8 @@ window.reportPost = async function(event, skillId) {
     } else {
         showToast("Report submitted to moderation team.");
     }
+    
+    closeReportModal();
 }
 
 // ------------------------------------------
