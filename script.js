@@ -133,13 +133,28 @@ window.updateUIForUser = async function() {
         loggedOutUI.style.display = 'none'; loggedInUI.style.display = 'flex';
         if (avatarBtn) avatarBtn.title = `Logged in as ${currentUser}`; if (dropdownUsername) dropdownUsername.innerText = currentUser;
         if (currentUserId) {
-            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url').eq('user_id', currentUserId).single();
-            if (profile && profile.avatar_url && navAvatarImg) {
-                if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
-                if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
-            } else {
-                if (navAvatarImg) navAvatarImg.style.display = 'none';
-                if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'flex'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
+            
+            // WE MUST FETCH THE ROLE HERE
+            const { data: profile } = await supabaseClient.from('profiles').select('avatar_url, role').eq('user_id', currentUserId).single();
+            
+            if (profile) {
+                if (profile.avatar_url && navAvatarImg) {
+                    if (avatarInitial) avatarInitial.style.display = 'none'; navAvatarImg.src = profile.avatar_url; navAvatarImg.style.display = 'block';
+                    if (avatarBtn) { avatarBtn.style.backgroundColor = 'transparent'; avatarBtn.style.border = '2px solid #22c55e'; }
+                } else {
+                    if (navAvatarImg) navAvatarImg.style.display = 'none';
+                    if (avatarInitial) { avatarInitial.innerText = currentUser.charAt(0).toUpperCase(); avatarInitial.style.display = 'flex'; if (avatarBtn) avatarBtn.style.backgroundColor = getColorForUsername(currentUser); }
+                }
+
+                // UNHIDE THE ADMIN BUTTON IF THEY HAVE PERMISSION
+                const adminLink = document.getElementById('admin-dashboard-link');
+                if (adminLink) {
+                    if (profile.role === 'admin' || profile.role === 'super_admin') {
+                        adminLink.style.display = 'block'; 
+                    } else {
+                        adminLink.style.display = 'none';
+                    }
+                }
             }
         }
     } else { loggedOutUI.style.display = 'block'; loggedInUI.style.display = 'none'; }
