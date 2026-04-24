@@ -26,6 +26,59 @@ if ("Notification" in window && Notification.permission !== "granted" && Notific
     Notification.requestPermission();
 }
 
+
+// ==========================================
+// SUPABASE OAUTH LISTENER (For Google Login)
+// ==========================================
+supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+        // The user just returned from Google successfully
+        const googleUser = session.user;
+        const email = googleUser.email;
+        // Use their Google name, or fallback to the first part of their email
+        const username = googleUser.user_metadata?.full_name || email.split('@')[0];
+
+        // 1. Check if they already exist in our custom app_users table
+        const { data: existingUser } = await supabaseClient.from('app_users').select('*').eq('email', email);
+
+        let currentAppUserId;
+        let currentAppUsername;
+
+        if (!existingUser || existingUser.length === 0) {
+            // 2. First time Google login: Create their app_users profile
+            const { data: newUser, error } = await supabaseClient.from('app_users').insert([{
+                email: email,
+                username: username,
+                password: 'GOOGLE_OAUTH_USER' // Dummy password since they use Google to auth
+            }]).select().single();
+
+            if (newUser) {
+                await supabaseClient.from('profiles').insert([{ user_id: newUser.id, is_available: true, role: 'user' }]);
+                currentAppUserId = newUser.id;
+                currentAppUsername = newUser.username;
+            }
+        } else {
+            // 3. Returning Google user
+            currentAppUserId = existingUser[0].id;
+            currentAppUsername = existingUser[0].username;
+        }
+
+        // 4. Set local storage so the rest of your app UI recognizes them
+        if (currentAppUserId && !localStorage.getItem('currentUserId')) {
+            localStorage.setItem('currentUserId', currentAppUserId);
+            localStorage.setItem('currentUser', currentAppUsername);
+            
+            // Redirect to home page if they were on the auth page
+            if (window.location.pathname.includes('auth.html')) {
+                window.location.href = "index.html"; 
+            } else {
+                updateUIForUser(); // Update UI if they are already on index.html
+            }
+        }
+    }
+});
+
+
 // ==========================================
 // 1.5 AUTHENTICATION & UI LOGIC
 // ==========================================
