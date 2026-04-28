@@ -2864,7 +2864,7 @@ window.toggleSearchFilters = function(event) {
     }
 }
 
-// Triggers when the user types in the search bar
+// Triggers when the user types in the main search bar
 window.handleSearchInput = function(event) {
     const query = event.target.value.trim();
     const resultsBox = document.getElementById('search-results-popup');
@@ -2888,6 +2888,14 @@ window.handleSearchInput = function(event) {
     }, 300);
 }
 
+// Triggers when a user types a tag or clicks a filter checkbox
+window.triggerFilterSearch = function() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        executeSearch();
+    }, 300);
+}
+
 // Executes the Supabase query with all filters applied
 window.executeSearch = async function(overrideQuery = null) {
     const inputEl = document.getElementById('main-search-input');
@@ -2897,19 +2905,18 @@ window.executeSearch = async function(overrideQuery = null) {
     if (query === '') return;
     resultsBox.style.display = 'block';
 
-    const category = document.getElementById('filter-category').value;
-    const reqCert = document.getElementById('filter-cert').checked;
-    const reqAvail = document.getElementById('filter-available').checked;
+    const tagFilter = document.getElementById('filter-tag') ? document.getElementById('filter-tag').value.trim() : '';
+    const reqCert = document.getElementById('filter-cert') ? document.getElementById('filter-cert').checked : false;
 
     // Build the Supabase query dynamically based on active filters
     let dbQuery = supabaseClient.from('skills')
-        .select(`*, app_users!inner(username, profiles!inner(avatar_url, is_available))`)
+        .select(`*, app_users!inner(username, profiles!inner(avatar_url))`)
         .eq('is_active', true)
         .ilike('title', `%${query}%`);
 
-    if (category) dbQuery = dbQuery.eq('category', category);
+    // Use ilike so it matches partial tags seamlessly
+    if (tagFilter !== '') dbQuery = dbQuery.ilike('category', `%${tagFilter}%`);
     if (reqCert) dbQuery = dbQuery.not('certificate_id', 'is', null);
-    if (reqAvail) dbQuery = dbQuery.eq('app_users.profiles.is_available', true);
 
     const { data: results, error } = await dbQuery.limit(10);
 
@@ -2952,8 +2959,10 @@ window.onclick = function(event) {
 
     const container = document.getElementById('global-search-container');
     if (container && !container.contains(event.target)) {
-        document.getElementById('search-results-popup').style.display = 'none';
-        document.getElementById('search-filter-dropdown').style.display = 'none';
+        const resultsBox = document.getElementById('search-results-popup');
+        const filterBox = document.getElementById('search-filter-dropdown');
+        if (resultsBox) resultsBox.style.display = 'none';
+        if (filterBox) filterBox.style.display = 'none';
     }
 }
 
