@@ -94,16 +94,48 @@
             <h1>Exchange Skills, <span class="text-gradient">No Money Needed.</span></h1>
             <p>Connect with experts in your community. Teach what you love and master a new craft through direct exchange.</p>
             
-            <div class="search-box">
-                <i data-lucide="search" style="color: #6b7280; margin-left: 5px;"></i>
-                <input type="text" placeholder="Search skills like 'Piano' or 'React'...">
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn-primary" style="padding: 10px 20px;">Search</button>
-                    <button class="btn-outline" style="padding: 10px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-color: #d1d5db; color: #4b5563;" title="Filter Options">
-                        <i data-lucide="list-filter" style="width: 20px; height: 20px;"></i>
-                    </button>
-                </div>
+<div style="max-width: 700px; margin: 0 auto 40px auto; position: relative;" id="global-search-container">
+    
+    <div style="display: flex; gap: 10px; background: white; padding: 8px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid #e5e7eb; position: relative; z-index: 50;">
+        <div style="position: relative; flex: 1; display: flex; align-items: center;">
+            <i data-lucide="search" style="position: absolute; left: 15px; color: #9ca3af; width: 20px; height: 20px;"></i>
+            <input type="text" id="main-search-input" placeholder="Search skills like 'Piano' or 'React'..." oninput="handleSearchInput(event)" style="width: 100%; padding: 12px 15px 12px 45px; border: none; background: transparent; font-size: 1rem; color: #111827; outline: none;">
+        </div>
+        <button onclick="toggleSearchFilters(event)" class="icon-btn" style="background: #f3f4f6; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; color: #4b5563;" title="Filters">
+            <i data-lucide="list-filter" style="width: 20px; height: 20px;"></i>
+        </button>
+    </div>
+
+    <div id="search-filter-dropdown" class="search-overlay-panel" style="display: none; padding: 15px; border-top-left-radius: 0; border-top-right-radius: 0;">
+        <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+            <div style="flex: 1; min-width: 150px;">
+                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #4b5563; margin-bottom: 5px;">Category</label>
+                <select id="filter-category" class="modal-input" style="margin: 0; padding: 8px;" onchange="executeSearch()">
+                    <option value="">All Categories</option>
+                    <option value="Programming">Programming</option>
+                    <option value="Design">Design</option>
+                    <option value="Music">Music</option>
+                    <option value="Languages">Languages</option>
+                    <option value="Cooking">Cooking</option>
+                    <option value="Other">Other</option>
+                </select>
             </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; justify-content: center; margin-top: 15px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #374151; cursor: pointer;">
+                    <input type="checkbox" id="filter-cert" onchange="executeSearch()" style="width: 16px; height: 16px; accent-color: #8b5cf6;"> Requires Certificate
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #374151; cursor: pointer;">
+                    <input type="checkbox" id="filter-available" onchange="executeSearch()" style="width: 16px; height: 16px; accent-color: #8b5cf6;"> User is Available Now
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div id="search-results-popup" class="search-overlay-panel" style="display: none; padding: 0; max-height: 400px; overflow-y: auto;">
+        <div id="search-results-content" style="padding: 10px; display: flex; flex-direction: column; gap: 5px;">
+            </div>
+    </div>
+</div>
 
         </div>
     </header>
