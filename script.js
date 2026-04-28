@@ -2838,3 +2838,123 @@ window.viewAdminNetwork = async function(targetId, targetName) {
         </div>
     `).join('');
 }
+
+
+// ==========================================
+// 18. OMNIBOX SEARCH & FILTER SYSTEM
+// ==========================================
+let searchTimeout = null;
+
+// Opens and closes the filter settings box
+window.toggleSearchFilters = function(event) {
+    if(event) event.stopPropagation();
+    const filterBox = document.getElementById('search-filter-dropdown');
+    const resultsBox = document.getElementById('search-results-popup');
+    
+    if (filterBox.style.display === 'none' || filterBox.style.display === '') {
+        filterBox.style.display = 'block';
+        // Hide results if we are opening filters, to keep UI clean
+        resultsBox.style.display = 'none'; 
+    } else {
+        filterBox.style.display = 'none';
+        // If there is text in the search bar, show results again when closing filters
+        if(document.getElementById('main-search-input').value.trim() !== '') {
+            resultsBox.style.display = 'block';
+        }
+    }
+}
+
+// Triggers when the user types in the search bar
+window.handleSearchInput = function(event) {
+    const query = event.target.value.trim();
+    const resultsBox = document.getElementById('search-results-popup');
+    const filterBox = document.getElementById('search-filter-dropdown');
+    
+    // Auto-close filters when typing starts
+    if(filterBox) filterBox.style.display = 'none';
+
+    if (query === '') {
+        resultsBox.style.display = 'none';
+        return;
+    }
+
+    resultsBox.style.display = 'block';
+    document.getElementById('search-results-content').innerHTML = `<p style="text-align:center; padding: 20px; color:#6b7280; font-size: 0.9rem;">Searching...</p>`;
+
+    // DEBOUNCE: Wait 300ms after the user stops typing before hitting the database
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        executeSearch(query);
+    }, 300);
+}
+
+// Executes the Supabase query with all filters applied
+window.executeSearch = async function(overrideQuery = null) {
+    const inputEl = document.getElementById('main-search-input');
+    const query = overrideQuery !== null ? overrideQuery : inputEl.value.trim();
+    const resultsBox = document.getElementById('search-results-popup');
+    
+    if (query === '') return;
+    resultsBox.style.display = 'block';
+
+    const category = document.getElementById('filter-category').value;
+    const reqCert = document.getElementById('filter-cert').checked;
+    const reqAvail = document.getElementById('filter-available').checked;
+
+    // Build the Supabase query dynamically based on active filters
+    let dbQuery = supabaseClient.from('skills')
+        .select(`*, app_users!inner(username, profiles!inner(avatar_url, is_available))`)
+        .eq('is_active', true)
+        .ilike('title', `%${query}%`);
+
+    if (category) dbQuery = dbQuery.eq('category', category);
+    if (reqCert) dbQuery = dbQuery.not('certificate_id', 'is', null);
+    if (reqAvail) dbQuery = dbQuery.eq('app_users.profiles.is_available', true);
+
+    const { data: results, error } = await dbQuery.limit(10);
+
+    const contentDiv = document.getElementById('search-results-content');
+
+    if (error || !results || results.length === 0) {
+        contentDiv.innerHTML = `<p style="text-align:center; padding: 20px; color:#6b7280; font-size: 0.9rem;">No matching skills found.</p>`;
+        return;
+    }
+
+    contentDiv.innerHTML = results.map(skill => {
+        const u = skill.app_users || { username: 'Unknown', profiles: {} };
+        const shortDesc = skill.description.length > 60 ? skill.description.substring(0, 60) + '...' : skill.description;
+        const certBadge = skill.certificate_id ? `<span style="font-size: 0.65rem; background: #fef3c7; color: #047857; padding: 2px 6px; border-radius: 4px; border: 1px solid #a7f3d0; margin-left: 6px;"><i data-lucide="award" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle;"></i> Cert</span>` : '';
+
+        return `
+        <div onclick="openSkillDetailModal(${skill.id}); document.getElementById('search-results-popup').style.display='none';" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 8px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
+            ${getAvatarHtml(u, 40)}
+            <div style="flex: 1; overflow: hidden;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <h4 style="margin: 0; font-size: 0.95rem; color: #111827;">${skill.title}</h4>
+                    <span style="font-size: 0.7rem; font-weight: 600; color: #8b5cf6;">${skill.category}</span>
+                </div>
+                <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${shortDesc}</p>
+                <div style="margin-top: 4px; display: flex; align-items: center; font-size: 0.75rem; color: #4b5563;">
+                    By <strong style="margin-left: 4px; color: #111827;">${u.username}</strong> ${certBadge}
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+    
+    lucide.createIcons();
+}
+
+// Global click listener to close popups when clicking outside
+const originalOnClick = window.onclick;
+window.onclick = function(event) {
+    if(originalOnClick) originalOnClick(event); // Keep existing dropdown logic running
+
+    const container = document.getElementById('global-search-container');
+    if (container && !container.contains(event.target)) {
+        document.getElementById('search-results-popup').style.display = 'none';
+        document.getElementById('search-filter-dropdown').style.display = 'none';
+    }
+}
+
+
