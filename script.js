@@ -10,25 +10,27 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ==========================================
 // SUPABASE OAUTH LISTENER (For Google Login)
 // ==========================================
+// ==========================================
+// SUPABASE OAUTH LISTENER (For Google Login)
+// ==========================================
 supabaseClient.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
         const googleUser = session.user;
         const email = googleUser.email;
-        // Use their Google name, or fallback to the first part of their email
         const username = googleUser.user_metadata?.full_name || email.split('@')[0];
 
-        // 1. Check if they already exist in our custom app_users table
         const { data: existingUser } = await supabaseClient.from('app_users').select('*').eq('email', email);
 
         let currentAppUserId;
         let currentAppUsername;
+        let roleToSave = 'user'; 
 
         if (!existingUser || existingUser.length === 0) {
-            // 2. First time Google login: Create their app_users profile
-            const { data: newUser, error } = await supabaseClient.from('app_users').insert([{
+            // First time Google login
+            const { data: newUser } = await supabaseClient.from('app_users').insert([{
                 email: email,
                 username: username,
-                password: 'GOOGLE_OAUTH_USER' // Dummy password since they use Google
+                password: 'GOOGLE_OAUTH_USER' 
             }]).select().single();
 
             if (newUser) {
@@ -37,17 +39,24 @@ supabaseClient.auth.onAuthStateChange(async (event, session) => {
                 currentAppUsername = newUser.username;
             }
         } else {
-            // 3. Returning Google user
+            // Returning Google user
             currentAppUserId = existingUser[0].id;
             currentAppUsername = existingUser[0].username;
+            
+            // Fetch their role so admins don't lose powers logging in with Google
+            const { data: prof } = await supabaseClient.from('profiles').select('role').eq('user_id', currentAppUserId).single();
+            if (prof && prof.role) roleToSave = prof.role;
         }
 
-        // 4. Set local storage so the rest of your app UI recognizes them
-        if (currentAppUserId && !localStorage.getItem('currentUserId')) {
+        if (currentAppUserId) {
             localStorage.setItem('currentUserId', currentAppUserId);
             localStorage.setItem('currentUser', currentAppUsername);
+            localStorage.setItem('currentUserRole', roleToSave);
             
-            // Redirect to home page if they were on the auth page
+            // THE FIX: Immediately destroy the internal Supabase session so they 
+            // match the exact behavior of our custom email/password users!
+            await supabaseClient.auth.signOut();
+
             if (window.location.pathname.includes('auth.html')) {
                 window.location.href = "index.html"; 
             } else {
